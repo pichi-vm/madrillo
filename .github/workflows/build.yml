@@ -32,6 +32,9 @@ jobs:
       - name: Unix inherited pipe qualification
         if: runner.os != 'Windows'
         run: cargo run --locked --features qualification --example inherited_pipe
+      - name: Unix terminal and inheritance composition
+        if: runner.os != 'Windows'
+        run: cargo run --locked --features qualification --example terminal_exec
       - name: State completion status
         shell: bash
         run: echo 'These checks do not constitute a full C01-C30 conformance pass.'
