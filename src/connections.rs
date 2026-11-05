@@ -234,11 +234,7 @@ impl Connections {
                 .create_sync()?;
             #[cfg(windows)]
             let listener = {
-                use interprocess::os::windows::{
-                    named_pipe::PipeListenerOptions, security_descriptor::SecurityDescriptor,
-                };
-                let sddl = widestring::U16CString::from_str("D:P(A;;GA;;;OW)")
-                    .map_err(io::Error::other)?;
+                use interprocess::os::windows::named_pipe::PipeListenerOptions;
                 let path = widestring::U16CString::from_os_str(path).map_err(io::Error::other)?;
                 PipeListenerOptions::new()
                     .path(path.as_ucstr())
@@ -247,7 +243,7 @@ impl Connections {
                     // turns for one input frame. Bound native buffers explicitly.
                     .input_buffer_size_hint(64 * 1024)
                     .output_buffer_size_hint(64 * 1024)
-                    .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
+                    .security_descriptor(Some(crate::security::pipe_descriptor()?))
                     .create()?
             };
             Some(listener)

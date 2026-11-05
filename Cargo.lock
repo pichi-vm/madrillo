@@ -575,6 +575,7 @@ dependencies = [
  "terminal_size",
  "thiserror 2.0.21",
  "widestring",
+ "win-custody",
  "windows-spawn",
 ]
 
@@ -1057,6 +1058,15 @@ name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72069c3113ab32ab29e5584db3c6ec55d416895e60715417b5b883a357c3e471"
+
+[[package]]
+name = "win-custody"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "399f5ddc7e473b74abf5633e31c84917491aa6cf0418ab310dd936645024dbfc"
+dependencies = [
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "winapi"

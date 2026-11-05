@@ -69,17 +69,12 @@ impl Input {
         };
         #[cfg(windows)]
         let (writer, input) = {
-            use interprocess::os::windows::{
-                named_pipe::{PipeListenerOptions, pipe_mode::Bytes},
-                security_descriptor::SecurityDescriptor,
-            };
+            use interprocess::os::windows::named_pipe::{PipeListenerOptions, pipe_mode::Bytes};
             let path_text = format!(r"\\.\pipe\madrillo-input-{}", std::process::id());
             let path = widestring::U16CString::from_str(&path_text).map_err(io::Error::other)?;
-            let sddl =
-                widestring::U16CString::from_str("D:P(A;;GA;;;OW)").map_err(io::Error::other)?;
             let listener = PipeListenerOptions::new()
                 .path(path.as_ucstr())
-                .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
+                .security_descriptor(Some(crate::security::pipe_descriptor()?))
                 .nonblocking(true)
                 .output_buffer_size_hint(64 * 1024)
                 .create_send_only::<Bytes>()?;

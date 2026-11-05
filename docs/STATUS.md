@@ -250,3 +250,16 @@ evidence, changed sources, repeated rounds and pending requirements. The actual
 full preflight correctly failed closed: all C01–C30 coverage remains pending.
 Full native orchestration, complete case mappings and pichi/dillo source/evidence
 are still required. These gate tests are not workload conformance evidence.
+
+Native resource and exit-command qualification passed at `bdfdbfd` on all three
+hosts: [run 42111864394](https://github.com/pichi-vm/madrillo/actions/runs/42111864394).
+This includes actual Windows held-handle release before the callback, native
+callback arguments/failure, and Unix descriptor/PTY/activation composition.
+
+Windows console-input and control pipes now grant access explicitly to the
+invoking token's user SID, instead of the owner-rights alias (which may refer
+to a group-owned object). The safe win-custody 0.1.2 API supplies the SID; the
+existing interprocess API applies the descriptor. A Windows native test queries
+the resulting pipe ACL and checks that its sole allowed trustee is that user.
+Cross-clippy and bare-library checks passed; native verification is pending.
+Atomic private state-directory creation on Windows remains unfinished.

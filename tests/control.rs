@@ -561,3 +561,22 @@ impl MonitorChild {
         }
     }
 }
+
+#[cfg(windows)]
+#[test]
+fn endpoint_acl_grants_only_the_invoking_user() -> Result<(), Box<dyn std::error::Error>> {
+    let mut monitor = Monitor::spawn("sleep")?;
+    let mut client = monitor.connect()?;
+    let Stream::NamedPipe(stream) = &client.stream.native;
+    let descriptor = win_custody::ObjectSecurityDescriptor::query_kernel_object(stream.inner())?;
+    let acl = descriptor.dacl()?;
+    let user = win_custody::OwnedSid::from_string(&win_custody::current_user_sid_string()?)?;
+    assert_eq!(acl.len(), 1);
+    assert!(
+        acl.allowed_aces()
+            .all(|ace| ace.trustee_matches(&user) && ace.mask() != 0)
+    );
+    client.send(ClientMessage::Terminate)?;
+    monitor.wait()?;
+    Ok(())
+}

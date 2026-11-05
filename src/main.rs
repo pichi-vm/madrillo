@@ -13,6 +13,8 @@ mod notify;
 mod oom;
 mod process;
 mod resources;
+#[cfg(windows)]
+mod security;
 mod state;
 mod terminal;
 mod transport;
