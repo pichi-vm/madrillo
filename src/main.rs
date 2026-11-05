@@ -7,6 +7,7 @@ mod input;
 #[cfg(unix)]
 mod launch;
 mod logging;
+mod notify;
 mod process;
 mod resources;
 mod state;
@@ -89,6 +90,9 @@ struct Cli {
     log_max_files: u16,
     #[arg(long)]
     no_sync_log: bool,
+    /// Relay allowed service notifications to this systemd socket (Linux).
+    #[arg(long)]
+    sdnotify_socket: Option<OsString>,
     /// Existing, empty, caller-owned Linux cgroup v2 directory for this workload.
     #[arg(long)]
     cgroup: Option<PathBuf>,
@@ -229,6 +233,11 @@ fn supervise(
         signal_hook::consts::SIGQUIT,
     ])?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
+    let mut notify = cli
+        .sdnotify_socket
+        .as_deref()
+        .map(|target| notify::Notify::open(directory, target))
+        .transpose()?;
     let mut path = cli
         .log_path
         .is_empty()
@@ -309,6 +318,9 @@ fn supervise(
     };
     if let Some(cwd) = &cli.cwd {
         command.current_dir(cwd);
+    }
+    if let Some(notify) = &notify {
+        notify.configure(&mut command);
     }
     let mut input = if let Some(terminal) = &terminal {
         #[cfg(unix)]
@@ -407,6 +419,7 @@ fn supervise(
                 cleanup_errors.push(format!("forward signal {signal}: {error}"));
             }
         }
+        pump_notifications(&mut notify, result);
         match service(connections, &capture, &mut input, terminal.as_ref()) {
             Ok(true) => {
                 result.cause = CompletionCause::Forced;
@@ -446,6 +459,7 @@ fn supervise(
     input.close();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
+        pump_notifications(&mut notify, result);
         if let Err(error) = service(connections, &capture, &mut input, terminal.as_ref()) {
             result.monitor_errors.push(error.to_string());
             result.output_truncated = true;
@@ -574,4 +588,15 @@ fn service(
         }
     }
     Ok(force)
+}
+
+fn pump_notifications(notify: &mut Option<notify::Notify>, result: &mut Completion) {
+    if let Some(relay) = notify
+        && let Err(error) = relay.pump()
+    {
+        result
+            .monitor_errors
+            .push(format!("notification relay: {error}"));
+        *notify = None;
+    }
 }

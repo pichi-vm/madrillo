@@ -174,3 +174,19 @@ inherited child handle rather than a copied parent number. The same no-handshake
 pre-Start cancellation and terminal startup tests now execute on Windows too.
 Invalid initial resources are rejected before state creation. Native verification
 is pending; exact arbitrary-handle pass/hold/capture support remains unfinished.
+
+All native CI jobs passed at `9fc5e58` (including real journal differential
+coverage) and at `cc5506f` (including Windows inherited startup):
+[run 42108035781](https://github.com/pichi-vm/madrillo/actions/runs/42108035781),
+[run 42108356313](https://github.com/pichi-vm/madrillo/actions/runs/42108356313).
+The Windows no-handshake and gated cancellation/authorization paths are now
+executed on Windows MSVC, not inferred from cross-compilation.
+
+The Linux notification relay is implemented with conmon's exact safe-field
+allowlist, a private workload socket, bounded pending datagrams, and explicit
+failure reporting. It accepts filesystem and abstract systemd destinations.
+It sends no synthetic readiness or watchdog traffic and does not rewrite sender
+credentials. Local qualification passed both exact datagram filtering and a
+real Type=notify service with NotifyAccess=main; the service manager accepted
+readiness/status from the actual madrillo MainPID. Native CI verification is
+pending. Non-Linux hosts reject the systemd-specific option explicitly.

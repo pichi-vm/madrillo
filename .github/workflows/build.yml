@@ -38,6 +38,9 @@ jobs:
       - name: Linux cgroup placement, descendants and isolated OOM
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_cgroup.py target/debug/madrillo target/debug/madrillo-fixture /sys/fs/cgroup
+      - name: Native systemd notification relay and attribution
+        if: runner.os == 'Linux'
+        run: sudo python3 tools/check_notify.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Build pinned conmon reference (test oracle only)
         if: runner.os == 'Linux'
         run: |

@@ -115,6 +115,28 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         #[cfg(target_os = "linux")]
+        Some("notify") => {
+            let socket = std::os::unix::net::UnixDatagram::unbound()?;
+            socket.connect(std::env::var_os("NOTIFY_SOCKET").ok_or("NOTIFY_SOCKET missing")?)?;
+            socket.send(b"MAINPID=1\nFDSTORE=1\rREADY=1\nSTATUS=madrillo relay fixture\nWATCHDOG=1\nERRNO=0")?;
+            std::thread::sleep(Duration::from_secs(15));
+            Ok(0)
+        }
+        #[cfg(target_os = "linux")]
+        Some("exec-notify") => {
+            use std::os::unix::process::CommandExt;
+            let error = Command::new(args.get(1).ok_or("monitor path missing")?)
+                .arg("--state-dir")
+                .arg(args.get(2).ok_or("state path missing")?)
+                .arg("--sdnotify-socket")
+                .arg(std::env::var_os("NOTIFY_SOCKET").ok_or("manager socket missing")?)
+                .args(["--timeout", "10", "--"])
+                .arg(std::env::current_exe()?)
+                .arg("notify")
+                .exec();
+            Err(error.into())
+        }
+        #[cfg(target_os = "linux")]
         Some("orphan-parent") => {
             for _ in 0..24 {
                 let mut child = Command::new(std::env::current_exe()?)
