@@ -16,6 +16,15 @@ pub(crate) struct Input {
 }
 
 impl Input {
+    #[cfg(unix)]
+    pub(crate) fn terminal(file: std::fs::File) -> Self {
+        Self {
+            writer: Some(file),
+            pending: Vec::new(),
+            written: 0,
+            closing: false,
+        }
+    }
     pub(crate) fn disabled() -> Self {
         Self {
             writer: None,
@@ -37,14 +46,11 @@ impl Input {
         #[cfg(windows)]
         let (writer, input) = {
             use interprocess::os::windows::{
-                named_pipe::{PipeListenerOptions, RecvPipeStream, pipe_mode::Bytes},
+                named_pipe::{PipeListenerOptions, pipe_mode::Bytes},
                 security_descriptor::SecurityDescriptor,
             };
-            let path = widestring::U16CString::from_str(format!(
-                r"\\.\pipe\madrillo-input-{}",
-                std::process::id()
-            ))
-            .map_err(io::Error::other)?;
+            let path_text = format!(r"\\.\pipe\madrillo-input-{}", std::process::id());
+            let path = widestring::U16CString::from_str(&path_text).map_err(io::Error::other)?;
             let sddl =
                 widestring::U16CString::from_str("D:P(A;;GA;;;OW)").map_err(io::Error::other)?;
             let listener = PipeListenerOptions::new()
@@ -52,14 +58,13 @@ impl Input {
                 .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
                 .nonblocking(true)
                 .create_send_only::<Bytes>()?;
-            let reader = RecvPipeStream::<Bytes>::connect_by_path(path.as_ucstr())?;
+            // The child receives ordinary synchronous stdin, even though the
+            // monitor's server handle supports overlapped nonblocking writes.
+            let reader = std::fs::OpenOptions::new().read(true).open(path_text)?;
             let writer = WindowsWriter {
                 pipe: listener.accept()?,
             };
-            let owned: std::os::windows::io::OwnedHandle = reader
-                .try_into()
-                .map_err(|_| io::Error::other("unexpected shared input handle"))?;
-            (writer, Stdio::from(owned))
+            (writer, Stdio::from(reader))
         };
         Ok((
             Self {

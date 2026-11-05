@@ -74,6 +74,19 @@ launch instead of attempting to rewrap std's write-only child handle. Explicit
 bounded close/final-delivery workers replace implicit unbounded pipe-drop work.
 Native Windows retesting is pending.
 
+Further Windows execution at `0c372c5` exposed a library behavior: a nonblocking
+empty named pipe was reported as EOF. The transport now uses a safe native
+PeekNamedPipe wrapper to distinguish an empty live pipe from disconnection,
+while leaving overlapped reads/writes with Interprocess. Child stdin now uses
+a synchronous client handle, as arbitrary child programs expect.
+
+Unix terminal operation is implemented and tested on Linux: controlling TTY,
+size/resize, merged capture, persistent detach/reattach, and native exit status.
+The fresh same-binary launcher reports setup/exec errors through a close-on-exec
+error pipe. This is internal exec error reporting, not a client handshake.
+ConPTY remains explicitly unsupported. Unix termination-signal forwarding has a
+real process test. Reaping and retained-state fsync waits are now bounded.
+
 The pinned conmon source has been built locally as a test oracle. The same
 binary fixture produced matching CRI binary payloads and exit 37. The committed
 CI harness independently rebuilds the pinned archive and verifies its digest

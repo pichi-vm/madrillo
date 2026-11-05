@@ -1,4 +1,5 @@
 use crate::framing::{FrameError, Frames, MAX_FRAME_BYTES};
+use crate::transport::Transport;
 use interprocess::local_socket::{
     GenericFilePath, Listener, ListenerNonblockingMode, ListenerOptions, Stream, prelude::*,
 };
@@ -20,7 +21,7 @@ pub(crate) struct Connections {
 
 struct Client {
     id: u64,
-    stream: Stream,
+    stream: Transport,
     header: [u8; 4],
     header_read: usize,
     payload: Vec<u8>,
@@ -34,16 +35,16 @@ struct Client {
 #[cfg(windows)]
 impl Drop for Client {
     fn drop(&mut self) {
-        let Stream::NamedPipe(stream) = &self.stream;
+        let Stream::NamedPipe(stream) = &self.stream.native;
         stream.inner().assume_flushed();
     }
 }
 
 impl Client {
-    fn new(id: u64, stream: Stream) -> Self {
-        Self {
+    fn new(id: u64, stream: Stream) -> io::Result<Self> {
+        Ok(Self {
             id,
-            stream,
+            stream: Transport::new(stream)?,
             header: [0; 4],
             header_read: 0,
             payload: Vec::new(),
@@ -52,7 +53,7 @@ impl Client {
             written: 0,
             attached: None,
             dead: false,
-        }
+        })
     }
     fn request(&mut self) -> Result<Option<Request>, FrameError> {
         if self.header_read < 4 {
@@ -182,7 +183,7 @@ impl Connections {
                 thread::Builder::new()
                     .name("madrillo-final-delivery".into())
                     .spawn(move || {
-                        let Stream::NamedPipe(stream) = &client.stream;
+                        let Stream::NamedPipe(stream) = &client.stream.native;
                         let _ = stream.inner().flush();
                         let _ = done.send(());
                     })?;
@@ -200,13 +201,14 @@ impl Connections {
         }
         Ok(())
     }
-    pub(crate) fn initial(&mut self, stream: Stream, input: bool) {
-        let mut client = Client::new(0, stream);
+    pub(crate) fn initial(&mut self, stream: Stream, input: bool) -> io::Result<()> {
+        let mut client = Client::new(0, stream)?;
         client.attached = Some(Vec::new());
         self.clients.push(client);
         if input {
             self.owner = Some(0);
         }
+        Ok(())
     }
     pub(crate) fn initial_alive(&self) -> bool {
         self.clients
@@ -253,7 +255,7 @@ impl Connections {
             for _ in 0..4 {
                 match listener.accept() {
                     Ok(stream) if self.clients.len() < MAX_CLIENTS => {
-                        self.clients.push(Client::new(self.next_id, stream));
+                        self.clients.push(Client::new(self.next_id, stream)?);
                         self.next_id = self
                             .next_id
                             .checked_add(1)

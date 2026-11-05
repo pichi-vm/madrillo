@@ -27,6 +27,24 @@ impl State {
     }
 
     pub(crate) fn publish(&self, result: &Completion) -> io::Result<()> {
+        let directory = self.directory.clone();
+        let result = result.clone();
+        let (done, complete) = std::sync::mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("madrillo-state".into())
+            .spawn(move || {
+                let _ = done.send(Self { directory }.write(&result));
+            })?;
+        complete
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .map_err(|error| {
+                io::Error::other(format!(
+                    "retained state publication did not complete: {error}"
+                ))
+            })?
+    }
+
+    fn write(&self, result: &Completion) -> io::Result<()> {
         let mut temporary = tempfile::NamedTempFile::new_in(&self.directory)?;
         serde_json::to_writer(&mut temporary, result)?;
         temporary.write_all(b"\n")?;

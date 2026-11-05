@@ -6,6 +6,8 @@ mod logging;
 mod process;
 mod resources;
 mod state;
+mod terminal;
+mod transport;
 use clap::Parser;
 use connections::Connections;
 use input::Input;
@@ -53,6 +55,12 @@ struct Cli {
     /// Give the initial attachment input ownership.
     #[arg(long)]
     stdin: bool,
+    /// Allocate a native host terminal. Pipe capture remains the default.
+    #[arg(long)]
+    terminal: bool,
+    /// Initial terminal size, ROWSxCOLS.
+    #[arg(long, default_value = "24x80", value_parser = parse_size)]
+    size: (u16, u16),
     /// CRI file path, 'none', or 'passthrough'. Defaults to STATE_DIR/console.log.
     #[arg(long)]
     log_path: Option<OsString>,
@@ -75,6 +83,15 @@ struct Cli {
 }
 
 fn main() -> ExitCode {
+    #[cfg(unix)]
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new("__madrillo_terminal_exec"))
+    {
+        return match terminal::exec() {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(_) => ExitCode::FAILURE,
+        };
+    }
     match run(Cli::parse()) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
@@ -82,6 +99,16 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn parse_size(value: &str) -> Result<(u16, u16), String> {
+    let (rows, cols) = value.split_once('x').ok_or("size must be ROWSxCOLS")?;
+    let rows = rows.parse::<u16>().map_err(|e| e.to_string())?;
+    let cols = cols.parse::<u16>().map_err(|e| e.to_string())?;
+    if rows == 0 || cols == 0 {
+        return Err("terminal dimensions must be nonzero".into());
+    }
+    Ok((rows, cols))
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -105,7 +132,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .unwrap_or_else(|| PathBuf::from(format!(r"\\.\pipe\madrillo-{}", std::process::id())));
     let mut connections = Connections::bind(Some(&endpoint))?;
     if let Some(initial) = initial {
-        connections.initial(initial, cli.stdin);
+        connections.initial(initial, cli.stdin)?;
     }
     let mut result = Completion {
         version: PROTOCOL_VERSION,
@@ -154,9 +181,23 @@ fn supervise(
     connections: &mut Connections,
     result: &mut Completion,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(unix)]
+    let mut signals = signal_hook::iterator::Signals::new([
+        signal_hook::consts::SIGTERM,
+        signal_hook::consts::SIGINT,
+        signal_hook::consts::SIGHUP,
+        signal_hook::consts::SIGQUIT,
+    ])?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let passthrough = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("passthrough"));
     let no_log = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("none"));
+    if cli.terminal && passthrough {
+        return Err("terminal capture cannot use passthrough logging".into());
+    }
+    let mut terminal = cli
+        .terminal
+        .then(|| terminal::Terminal::open(cli.size.0, cli.size.1))
+        .transpose()?;
     let log = if passthrough || no_log {
         None
     } else {
@@ -180,7 +221,17 @@ fn supervise(
     if let Some(cwd) = &cli.cwd {
         command.current_dir(cwd);
     }
-    let mut input = if passthrough {
+    let mut input = if let Some(terminal) = &terminal {
+        #[cfg(unix)]
+        {
+            Input::terminal(terminal.writer()?)
+        }
+        #[cfg(windows)]
+        {
+            let _ = terminal;
+            return Err("ConPTY is not implemented yet".into());
+        }
+    } else if passthrough {
         command
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -200,14 +251,27 @@ fn supervise(
             monitor_pid: std::process::id(),
         },
     )?;
-    if cli.start_gated && !await_start(connections)? {
+    if cli.start_gated
+        && !await_start(
+            connections,
+            #[cfg(unix)]
+            &mut signals,
+        )?
+    {
         result.cause = CompletionCause::LaunchCancelled;
         result.cleanup = CleanupResult::Complete;
         result.exited_at_unix_ms = unix_ms();
         return Ok(());
     }
-    let capture = Capture::start(log, !cli.no_sync_log, if passthrough { 0 } else { 2 })?;
-    let mut child = Workload::spawn(command)?;
+    let sources = if passthrough {
+        0
+    } else if cli.terminal {
+        1
+    } else {
+        2
+    };
+    let capture = Capture::start(log, !cli.no_sync_log, sources)?;
+    let mut child = Workload::spawn(command, terminal.as_mut())?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();
     // Keep the sole console writer alive with zero clients.
@@ -217,6 +281,10 @@ fn supervise(
                 leader_pid: child.id(),
             })
             .map_err(io::Error::other)?;
+        #[cfg(unix)]
+        if let Some(terminal) = &terminal {
+            capture.read(terminal.reader()?, Stream::Stdout)?;
+        }
         if let Some(stdout) = child.stdout() {
             capture.read(stdout, Stream::Stdout)?;
         }
@@ -235,7 +303,15 @@ fn supervise(
         return Err(error.into());
     }
     loop {
-        match service(connections, &capture, &mut input) {
+        #[cfg(unix)]
+        for signal in signals.pending() {
+            if let Err(error) = child.signal(signal)
+                && cleanup_errors.len() < 32
+            {
+                cleanup_errors.push(format!("forward signal {signal}: {error}"));
+            }
+        }
+        match service(connections, &capture, &mut input, terminal.as_ref()) {
             Ok(true) => {
                 result.cause = CompletionCause::Forced;
                 break;
@@ -270,18 +346,11 @@ fn supervise(
     if let Err(error) = child.force() {
         cleanup_errors.push(format!("force workload: {error}"));
     }
-    result.leader = match child.reap() {
-        Ok(status) => status,
-        Err(error) => {
-            cleanup_errors.push(format!("reap leader: {error}"));
-            LeaderResult::Unknown
-        }
-    };
-    result.cleanup = child.cleanup_result(cleanup_errors);
+    (result.leader, result.cleanup) = child.finish(cleanup_errors);
     input.close();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
-        if let Err(error) = service(connections, &capture, &mut input) {
+        if let Err(error) = service(connections, &capture, &mut input, terminal.as_ref()) {
             result.log_errors.push(error.to_string());
             break;
         }
@@ -308,8 +377,15 @@ fn supervise(
     Ok(())
 }
 
-fn await_start(connections: &mut Connections) -> Result<bool, Box<dyn std::error::Error>> {
+fn await_start(
+    connections: &mut Connections,
+    #[cfg(unix)] signals: &mut signal_hook::iterator::Signals,
+) -> Result<bool, Box<dyn std::error::Error>> {
     loop {
+        #[cfg(unix)]
+        if signals.pending().next().is_some() {
+            return Ok(false);
+        }
         for (id, message) in connections.poll()? {
             match message {
                 ClientMessage::Start if id == 0 => return Ok(true),
@@ -334,6 +410,7 @@ fn service(
     connections: &mut Connections,
     capture: &Capture,
     input: &mut Input,
+    terminal: Option<&terminal::Terminal>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut force = false;
     for (id, message) in connections.poll()? {
@@ -350,6 +427,11 @@ fn service(
                 }
             }
             ClientMessage::InputEnd => connections.release_input(id),
+            ClientMessage::CloseInput if terminal.is_some() => connections.error(
+                id,
+                ErrorCode::Unsupported,
+                "a terminal has no input half-close; send terminal EOF bytes instead",
+            )?,
             ClientMessage::CloseInput if connections.owns_input(id) => input.close_after_flush(),
             ClientMessage::Input { .. } | ClientMessage::CloseInput => connections.error(
                 id,
@@ -358,6 +440,15 @@ fn service(
             )?,
             ClientMessage::Terminate => force = true,
             ClientMessage::Wait => {}
+            ClientMessage::Resize { rows, cols } => {
+                if let Some(terminal) = terminal {
+                    if let Err(error) = terminal.resize(rows, cols) {
+                        connections.error(id, ErrorCode::Io, &error.to_string())?;
+                    }
+                } else {
+                    connections.error(id, ErrorCode::Unsupported, "workload has no terminal")?;
+                }
+            }
             _ => connections.error(id, ErrorCode::Unsupported, "request is not implemented yet")?,
         }
     }

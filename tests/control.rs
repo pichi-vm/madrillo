@@ -1,4 +1,6 @@
 #![forbid(unsafe_code)]
+#[path = "../src/transport.rs"]
+mod transport;
 use interprocess::local_socket::{GenericFilePath, Stream, prelude::*};
 use madrillo::{
     ClientMessage, CompletionCause, ErrorCode, PROTOCOL_VERSION, Request, Response, ServerMessage,
@@ -18,6 +20,14 @@ struct Monitor {
 impl Monitor {
     #[cfg(unix)]
     fn initial(mode: &str, gated: bool) -> Result<(Self, Client), Box<dyn std::error::Error>> {
+        Self::initial_with_flags(mode, gated, &[])
+    }
+    #[cfg(unix)]
+    fn initial_with_flags(
+        mode: &str,
+        gated: bool,
+        flags: &[&str],
+    ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
         use command_fds::{CommandFdExt, FdMapping};
         let root = tempfile::tempdir()?;
         let endpoint = root.path().join("control.sock");
@@ -28,6 +38,7 @@ impl Monitor {
             .arg(root.path().join("state"))
             .arg("--listen")
             .arg(&endpoint)
+            .args(flags)
             .args(["--control", "22", "--timeout", "5"]);
         if gated {
             command.arg("--start-gated");
@@ -43,7 +54,9 @@ impl Monitor {
         let child = command.spawn()?;
         drop(command);
         parent.set_nonblocking(true)?;
-        let stream = interprocess::os::unix::uds_local_socket::Stream::from(parent).into();
+        let stream = transport::Transport::new(
+            interprocess::os::unix::uds_local_socket::Stream::from(parent).into(),
+        )?;
         Ok((
             Self {
                 child,
@@ -91,7 +104,7 @@ impl Monitor {
                 Ok(stream) => {
                     stream.set_nonblocking(true)?;
                     return Ok(Client {
-                        stream,
+                        stream: transport::Transport::new(stream)?,
                         pending: Vec::new(),
                     });
                 }
@@ -113,6 +126,79 @@ impl Monitor {
             std::thread::sleep(Duration::from_millis(5));
         }
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn terminal_size_resize_reattach_and_native_exit() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial_with_flags(
+        "terminal-probe",
+        false,
+        &["--terminal", "--size", "31x99", "--stdin"],
+    )?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    for (rows, cols) in [(31, 99), (42, 107)] {
+        client.send(ClientMessage::Resize { rows, cols })?;
+        client.send(ClientMessage::Input {
+            bytes: b"size\n".to_vec(),
+        })?;
+        let expected = format!("SIZE={rows}x{cols}");
+        let mut text = Vec::new();
+        while !String::from_utf8_lossy(&text).contains(&expected) {
+            match client.next()? {
+                ServerMessage::Output { stream, bytes } => {
+                    assert_eq!(stream, "stdout");
+                    text.extend_from_slice(&bytes);
+                }
+                response => return Err(format!("unexpected {response:?}").into()),
+            }
+        }
+    }
+    client.send(ClientMessage::CloseInput)?;
+    assert!(matches!(
+        client.next()?,
+        ServerMessage::Error {
+            code: ErrorCode::Unsupported,
+            ..
+        }
+    ));
+    drop(client);
+    std::thread::sleep(Duration::from_millis(30));
+    let mut client = monitor.connect()?;
+    client.attach(true)?;
+    client.send(ClientMessage::Input {
+        bytes: b"exit\n".to_vec(),
+    })?;
+    loop {
+        match client.next()? {
+            ServerMessage::Output { .. } => {}
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 37 });
+                assert!(result.log_errors.is_empty());
+                break;
+            }
+            response => return Err(format!("unexpected {response:?}").into()),
+        }
+    }
+    monitor.wait()
+}
+
+#[cfg(unix)]
+#[test]
+fn monitor_sigterm_is_forwarded_and_result_is_finalized() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (mut monitor, mut client) = Monitor::initial("sleep", false)?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(i32::try_from(monitor.child.id())?),
+        nix::sys::signal::Signal::SIGTERM,
+    )?;
+    assert!(
+        matches!(client.next()?, ServerMessage::Completed { result } if result.leader == madrillo::LeaderResult::Signal { signal: 15, core_dumped: false } && result.log_errors.is_empty())
+    );
+    monitor.wait()
 }
 
 #[cfg(unix)]
@@ -180,7 +266,7 @@ impl Drop for Monitor {
 }
 
 struct Client {
-    stream: Stream,
+    stream: transport::Transport,
     pending: Vec<u8>,
 }
 impl Client {

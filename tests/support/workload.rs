@@ -20,6 +20,31 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        #[cfg(unix)]
+        Some("terminal-probe") => {
+            use std::{io::IsTerminal, os::fd::AsFd};
+            if !io::stdin().is_terminal()
+                || !io::stdout().is_terminal()
+                || !io::stderr().is_terminal()
+            {
+                return Err("stdio is not a terminal".into());
+            }
+            loop {
+                let mut line = String::new();
+                if io::stdin().read_line(&mut line)? == 0 {
+                    return Ok(0);
+                }
+                match line.trim() {
+                    "size" => {
+                        let size = rustix::termios::tcgetwinsize(io::stdin().as_fd())?;
+                        writeln!(io::stdout(), "SIZE={}x{}", size.ws_row, size.ws_col)?;
+                        io::stdout().flush()?;
+                    }
+                    "exit" => return Ok(37),
+                    _ => {}
+                }
+            }
+        }
         Some("emit") => {
             io::stdout().write_all(b"first\n\npartial\0\xff")?;
             io::stdout().flush()?;

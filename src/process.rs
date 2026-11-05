@@ -15,10 +15,18 @@ impl Workload {
     pub(crate) fn id(&self) -> u32 {
         self.child.id()
     }
-    pub(crate) fn spawn(command: Command) -> io::Result<Self> {
+    pub(crate) fn spawn(
+        command: Command,
+        terminal: Option<&mut crate::terminal::Terminal>,
+    ) -> io::Result<Self> {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
+            if let Some(terminal) = terminal {
+                return Ok(Self {
+                    child: terminal.spawn(command)?,
+                });
+            }
             let mut command = command;
             command.process_group(0);
             Ok(Self {
@@ -27,6 +35,12 @@ impl Workload {
         }
         #[cfg(windows)]
         {
+            if terminal.is_some() {
+                return Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "ConPTY is not implemented yet",
+                ));
+            }
             use process_wrap::std::{CommandWrap, JobObject};
             let child = CommandWrap::from(command).wrap(JobObject).spawn()?;
             Ok(Self { child })
@@ -87,6 +101,52 @@ impl Workload {
         #[cfg(windows)]
         {
             self.child.start_kill()
+        }
+    }
+    #[cfg(unix)]
+    pub(crate) fn signal(&self, signal: i32) -> io::Result<()> {
+        use nix::{
+            errno::Errno,
+            sys::signal::{Signal, killpg},
+            unistd::Pid,
+        };
+        let pid = i32::try_from(self.child.id()).map_err(io::Error::other)?;
+        match killpg(Pid::from_raw(pid), Signal::try_from(signal)?) {
+            Ok(()) | Err(Errno::ESRCH) => Ok(()),
+            Err(error) => Err(error.into()),
+        }
+    }
+    pub(crate) fn finish(mut self, mut errors: Vec<String>) -> (LeaderResult, CleanupResult) {
+        use std::{sync::mpsc, thread, time::Duration};
+        let (done, complete) = mpsc::sync_channel(1);
+        let spawned = thread::Builder::new()
+            .name("madrillo-reap".into())
+            .spawn(move || {
+                let leader = match self.reap() {
+                    Ok(leader) => leader,
+                    Err(error) => {
+                        errors.push(format!("reap workload: {error}"));
+                        LeaderResult::Unknown
+                    }
+                };
+                let _ = done.send((leader, self.cleanup_result(errors)));
+            });
+        match spawned {
+            Ok(_) => match complete.recv_timeout(Duration::from_secs(5)) {
+                Ok(result) => result,
+                Err(error) => (
+                    LeaderResult::Unknown,
+                    CleanupResult::Incomplete {
+                        errors: vec![format!("workload reaping did not complete: {error}")],
+                    },
+                ),
+            },
+            Err(error) => (
+                LeaderResult::Unknown,
+                CleanupResult::Incomplete {
+                    errors: vec![format!("create reap worker: {error}")],
+                },
+            ),
         }
     }
     pub(crate) fn reap(&mut self) -> io::Result<LeaderResult> {
