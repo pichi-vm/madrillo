@@ -451,3 +451,30 @@ fn close_input_drains_preceding_accepted_bytes() -> Result<(), Box<dyn std::erro
     assert_eq!(observed, payload);
     monitor.wait()
 }
+
+#[test]
+fn reopen_rotates_the_file_and_acknowledges_completion() -> Result<(), Box<dyn std::error::Error>> {
+    let mut monitor = Monitor::spawn_with_flags("echo", &["--log-rotate"])?;
+    let mut client = monitor.connect()?;
+    client.attach(true)?;
+    client.send(ClientMessage::Input {
+        bytes: b"before\n".to_vec(),
+    })?;
+    assert!(matches!(client.next()?, ServerMessage::Output { .. }));
+    client.send(ClientMessage::ReopenLogs)?;
+    assert_eq!(client.next()?, ServerMessage::LogsReopened);
+    let logs = monitor._root.path().join("state");
+    assert!(std::fs::read_to_string(logs.join("console.log.1"))?.ends_with("stdout F before\n"));
+    assert!(std::fs::read(logs.join("console.log"))?.is_empty());
+    client.send(ClientMessage::Input {
+        bytes: b"after\n".to_vec(),
+    })?;
+    assert!(matches!(client.next()?, ServerMessage::Output { .. }));
+    client.send(ClientMessage::CloseInput)?;
+    assert!(
+        matches!(client.next()?, ServerMessage::Completed { result } if result.log_errors.is_empty())
+    );
+    monitor.wait()?;
+    assert!(std::fs::read_to_string(logs.join("console.log"))?.ends_with("stdout F after\n"));
+    Ok(())
+}

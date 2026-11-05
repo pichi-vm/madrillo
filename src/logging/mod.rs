@@ -15,6 +15,7 @@ const MAX_ERRORS: usize = 32;
 enum Message {
     Data(Stream, Vec<u8>),
     End(Option<String>),
+    Reopen(u64),
 }
 #[derive(Default)]
 pub(crate) struct Report {
@@ -24,6 +25,7 @@ pub(crate) struct Capture {
     sender: SyncSender<Message>,
     pub(crate) done: Receiver<Report>,
     pub(crate) output: Receiver<(Stream, Vec<u8>)>,
+    pub(crate) controls: Receiver<(u64, Result<(), String>)>,
 }
 
 impl Capture {
@@ -31,6 +33,7 @@ impl Capture {
         let (sender, incoming) = mpsc::sync_channel(QUEUED_CHUNKS);
         let (done, report) = mpsc::sync_channel(1);
         let (output, live) = mpsc::sync_channel(QUEUED_CHUNKS);
+        let (controls, responses) = mpsc::sync_channel(32);
         thread::Builder::new()
             .name("madrillo-log".into())
             .spawn(move || {
@@ -49,6 +52,16 @@ impl Capture {
                             if output.send((stream, bytes)).is_err() {
                                 break;
                             }
+                            error
+                        }
+                        Ok(Message::Reopen(id)) => {
+                            let result = log
+                                .as_mut()
+                                .ok_or_else(|| "no file log configured".to_owned())
+                                .and_then(|log| log.reopen().map_err(|e| e.to_string()));
+                            let error = result.as_ref().err().cloned();
+                            // The supervisor drains these independently of client I/O.
+                            let _ = controls.send((id, result));
                             error
                         }
                         Ok(Message::End(error)) => {
@@ -78,7 +91,20 @@ impl Capture {
             sender,
             done: report,
             output: live,
+            controls: responses,
         })
+    }
+    pub(crate) fn reopen(&self, id: u64) -> io::Result<()> {
+        self.sender
+            .try_send(Message::Reopen(id))
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => {
+                    io::Error::new(io::ErrorKind::WouldBlock, "log worker queue is full")
+                }
+                mpsc::TrySendError::Disconnected(_) => {
+                    io::Error::new(io::ErrorKind::BrokenPipe, "log worker has stopped")
+                }
+            })
     }
     pub(crate) fn read(
         &self,

@@ -135,3 +135,16 @@ exposed a process-wrap completion-port race: its outer try_wait consumed the
 Job-empty event that its later wait needed. Madrillo now polls the inner leader
 and reserves the Job event for final cleanup. An already-observed native leader
 result is retained separately even if cleanup/reaping times out on any host.
+
+Native qualification passed on all three hosts at `7556611`:
+[run 42106188595](https://github.com/pichi-vm/madrillo/actions/runs/42106188595).
+This includes actual Windows ConPTY size/resize, detach/reattach, native status
+and descendant-termination fixtures, plus the pipe leader/Job wait fix. It is
+still a partial qualification run, not a full conformance pass.
+
+File reopen now has a bounded asynchronous control request and completion
+response. Rotation creates the replacement first, preserves the active log on
+failure, syncs retired files unless opted out, and syncs the held directory at
+finalization on Unix. New tests check record continuity across explicit reopen,
+failed-rotation preservation, and Windows hard-link rejection. Native verification
+of these latest logging changes is pending.

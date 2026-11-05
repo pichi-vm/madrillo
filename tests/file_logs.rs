@@ -22,6 +22,7 @@ fn rotation_retains_whole_records_and_cumulative_cap_survives_reopen()
             total: Some(100),
             backups: Some(2),
         },
+        true,
     )?;
     // Each record is 49 bytes. The cumulative cap is checked before a record,
     // so the third record takes total written bytes past 100; the fourth drops.
@@ -48,6 +49,7 @@ fn oversized_records_are_whole_and_truncation_replaces_inode()
             size: Some(1),
             ..Limits::default()
         },
+        true,
     )?;
     log.write_chunk(time, Stream::Stdout, b"first\nsecond\n")?;
     let content = fs::read_to_string(path)?;
@@ -63,7 +65,7 @@ fn an_existing_log_is_appended_to() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let path = root.path().join("log");
     fs::write(&path, b"existing\n")?;
-    let mut log = FileLog::open(&path, Limits::default())?;
+    let mut log = FileLog::open(&path, Limits::default(), true)?;
     log.write_chunk(
         DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?,
         Stream::Stdout,
@@ -84,19 +86,57 @@ fn special_files_and_links_are_rejected_without_modifying_targets()
     fs::write(&target, b"preserved")?;
     let link = root.path().join("link");
     symlink(&target, &link)?;
-    assert!(FileLog::open(&link, Limits::default()).is_err());
+    assert!(FileLog::open(&link, Limits::default(), true).is_err());
     let hard = root.path().join("hard");
     fs::hard_link(&target, &hard)?;
-    assert!(FileLog::open(&hard, Limits::default()).is_err());
+    assert!(FileLog::open(&hard, Limits::default(), true).is_err());
     let fifo = root.path().join("fifo");
     nix::unistd::mkfifo(
         &fifo,
         nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
     )?;
-    let error = FileLog::open(&fifo, Limits::default())
+    let error = FileLog::open(&fifo, Limits::default(), true)
         .err()
         .ok_or_else(|| io::Error::other("FIFO was accepted"))?;
     assert!(error.kind() == io::ErrorKind::Other || error.raw_os_error() == Some(nix::libc::ENXIO));
+    assert_eq!(fs::read(target)?, b"preserved");
+    Ok(())
+}
+
+#[test]
+fn failed_rotation_preserves_active_log_and_removes_prepared_file()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("log");
+    let mut log = FileLog::open(
+        &path,
+        Limits {
+            backups: Some(1),
+            ..Limits::default()
+        },
+        true,
+    )?;
+    let time = DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?;
+    log.write_chunk(time, Stream::Stdout, b"before\n")?;
+    let before = fs::read(&path)?;
+    fs::create_dir(root.path().join("log.1"))?;
+    assert!(log.reopen().is_err());
+    assert_eq!(fs::read(&path)?, before);
+    log.write_chunk(time, Stream::Stdout, b"after\n")?;
+    assert!(fs::read_to_string(&path)?.ends_with("stdout F after\n"));
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    Ok(())
+}
+
+#[cfg(windows)]
+#[test]
+fn hard_links_are_rejected_on_windows() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let target = root.path().join("target");
+    fs::write(&target, b"preserved")?;
+    let link = root.path().join("link");
+    fs::hard_link(&target, &link)?;
+    assert!(FileLog::open(&link, Limits::default(), true).is_err());
     assert_eq!(fs::read(target)?, b"preserved");
     Ok(())
 }

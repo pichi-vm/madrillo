@@ -13,7 +13,9 @@ TIMESTAMP = re.compile(rb"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{9}[+-]\d\d:\d\d")
 
 def decode(path):
     records = []
-    for line in path.read_bytes().splitlines(keepends=True):
+    # CRI separates records only with LF; other binary control bytes are data.
+    for record in path.read_bytes().split(b"\n")[:-1]:
+        line = record + b"\n"
         time, stream, kind, payload = line.split(b" ", 3)
         if not TIMESTAMP.fullmatch(time) or stream not in (b"stdout", b"stderr"):
             raise AssertionError(f"invalid timestamp/stream: {line!r}")

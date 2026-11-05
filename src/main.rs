@@ -219,6 +219,7 @@ fn supervise(
                 total: cli.log_global_size_max,
                 backups: cli.log_rotate.then_some(cli.log_max_files),
             },
+            !cli.no_sync_log,
         )?)
     };
     #[cfg(target_os = "linux")]
@@ -470,6 +471,11 @@ fn service(
             )?,
             ClientMessage::Terminate => force = true,
             ClientMessage::Wait => {}
+            ClientMessage::ReopenLogs => {
+                if let Err(error) = capture.reopen(id) {
+                    connections.error(id, ErrorCode::ResourceLimit, &error.to_string())?;
+                }
+            }
             ClientMessage::Resize { rows, cols } => {
                 if let Some(terminal) = terminal {
                     if let Err(error) = terminal.resize(rows, cols) {
@@ -480,6 +486,13 @@ fn service(
                 }
             }
             _ => connections.error(id, ErrorCode::Unsupported, "request is not implemented yet")?,
+        }
+    }
+    for _ in 0..32 {
+        match capture.controls.try_recv() {
+            Ok((id, Ok(()))) => connections.send(id, ServerMessage::LogsReopened)?,
+            Ok((id, Err(message))) => connections.error(id, ErrorCode::Io, &message)?,
+            Err(_) => break,
         }
     }
     if let Err(error) = input.flush() {

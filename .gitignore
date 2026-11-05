@@ -1,3 +1,4 @@
 /target/
 /conformance-runs/
 /.qualification/
+__pycache__/

@@ -25,10 +25,11 @@ pub(crate) struct FileLog {
     limits: Limits,
     size: u64,
     total: u64,
+    synchronize: bool,
 }
 
 impl FileLog {
-    pub(crate) fn open(path: &Path, limits: Limits) -> io::Result<Self> {
+    pub(crate) fn open(path: &Path, limits: Limits, synchronize: bool) -> io::Result<Self> {
         let name = path
             .file_name()
             .ok_or_else(|| io::Error::other("log path needs a filename"))?
@@ -49,6 +50,7 @@ impl FileLog {
             limits,
             size,
             total: 0,
+            synchronize,
         })
     }
 
@@ -73,6 +75,15 @@ impl FileLog {
         #[cfg(unix)]
         {
             use cap_std::fs::MetadataExt;
+            if file.metadata()?.nlink() != 1 {
+                return Err(io::Error::other(
+                    "log destination must have exactly one hard link",
+                ));
+            }
+        }
+        #[cfg(windows)]
+        {
+            use cap_fs_ext::MetadataExt;
             if file.metadata()?.nlink() != 1 {
                 return Err(io::Error::other(
                     "log destination must have exactly one hard link",
@@ -121,35 +132,70 @@ impl FileLog {
     // Conmon's reopen means rotate/truncate, including an explicit reopen
     // request; it is not merely an append-open of a replacement inode.
     pub(crate) fn reopen(&mut self) -> io::Result<()> {
-        if let Some(backups) = self.limits.backups {
-            for index in (2..=backups).rev() {
-                match self.directory.rename(
-                    self.backup(index - 1),
-                    &self.directory,
-                    self.backup(index),
-                ) {
-                    Ok(()) => {}
-                    Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                    Err(e) => return Err(e),
+        // Prepare the replacement before touching the active log. The held
+        // directory capability keeps every operation in the granted directory.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let (name, file) = (0..32)
+            .find_map(|_| {
+                let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let name =
+                    OsString::from(format!(".madrillo-{}-{sequence}.log", std::process::id()));
+                match Self::open_file(&self.directory, &name, true) {
+                    Ok(file) => Some(Ok((name, file))),
+                    Err(error) if error.kind() == io::ErrorKind::AlreadyExists => None,
+                    Err(error) => Some(Err(error)),
                 }
+            })
+            .ok_or_else(|| io::Error::other("temporary log name collisions"))??;
+        let replace = (|| -> io::Result<()> {
+            if self.synchronize {
+                self.file.sync_all()?;
             }
-            self.directory
-                .rename(&self.name, &self.directory, self.backup(1))?;
-        } else {
-            // Unlink replaces only the directory entry: a malicious hard link
-            // or symlink is never followed and truncated during reopen.
-            match self.directory.remove_file(&self.name) {
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-                Err(e) => return Err(e),
+            if let Some(backups) = self.limits.backups {
+                for index in (2..=backups).rev() {
+                    match self.directory.rename(
+                        self.backup(index - 1),
+                        &self.directory,
+                        self.backup(index),
+                    ) {
+                        Ok(()) => {}
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                        Err(error) => return Err(error),
+                    }
+                }
+                self.directory
+                    .rename(&self.name, &self.directory, self.backup(1))?;
+                if let Err(error) = self.directory.rename(&name, &self.directory, &self.name) {
+                    if let Err(restore) =
+                        self.directory
+                            .rename(self.backup(1), &self.directory, &self.name)
+                    {
+                        return Err(io::Error::other(format!(
+                            "replace log: {error}; restore original: {restore}"
+                        )));
+                    }
+                    return Err(error);
+                }
+            } else {
+                // Atomic directory-entry replacement does not follow a link
+                // placed at the destination and never truncates its target.
+                self.directory.rename(&name, &self.directory, &self.name)?;
             }
+            Ok(())
+        })();
+        if let Err(error) = replace {
+            let _ = self.directory.remove_file(name);
+            return Err(error);
         }
-        self.file = Self::open_file(&self.directory, &self.name, true)?;
+        self.file = file;
         self.size = 0;
         Ok(())
     }
 
     pub(crate) fn sync(&self) -> io::Result<()> {
-        self.file.sync_all()
+        self.file.sync_all()?;
+        #[cfg(unix)]
+        self.directory.open(".")?.sync_all()?;
+        Ok(())
     }
 }

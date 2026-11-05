@@ -41,6 +41,7 @@ pub enum ServerMessage {
     Prepared { monitor_pid: u32 },
     Started { leader_pid: u32 },
     Attached { input: bool },
+    LogsReopened,
     Output { stream: String, bytes: Vec<u8> },
     Completed { result: Completion },
     Error { code: ErrorCode, message: String },
