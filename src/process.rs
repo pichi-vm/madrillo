@@ -32,6 +32,7 @@ impl Workload {
         command: Command,
         terminal: Option<&mut crate::terminal::Terminal>,
         #[cfg(target_os = "linux")] group: Option<crate::cgroup::Cgroup>,
+        #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
     ) -> io::Result<Self> {
         #[cfg(unix)]
         {
@@ -45,7 +46,7 @@ impl Workload {
             let membership = group.as_ref().map(|group| group.membership()).transpose()?;
             #[cfg(not(target_os = "linux"))]
             let membership = None;
-            let child = crate::launch::spawn(command, membership)?;
+            let child = crate::launch::spawn(command, membership, inherited)?;
             Ok(Self {
                 observed: None,
                 child,

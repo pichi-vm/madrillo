@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+mod activation;
 #[cfg(target_os = "linux")]
 mod cgroup;
 mod connections;
@@ -56,6 +57,15 @@ struct Cli {
     /// Ownership of the already-connected initial control channel.
     #[arg(long)]
     control: Option<usize>,
+    /// Retain this inherited resource until workload cleanup; never pass it on.
+    #[arg(long)]
+    hold: Vec<usize>,
+    /// Pass this inherited descriptor to the workload at the same number (Unix).
+    #[arg(long)]
+    inherit: Vec<usize>,
+    /// Transfer systemd activation sockets even when LISTEN_PID names the caller.
+    #[arg(long)]
+    replace_listen_pid: bool,
     /// Wait for Start on the initial channel before executing the workload.
     #[arg(long, requires = "control")]
     start_gated: bool,
@@ -101,6 +111,15 @@ struct Cli {
     /// Force the workload scope after this many seconds.
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     timeout: Option<u64>,
+    /// Execute this native program after final result publication and notification.
+    #[arg(long)]
+    exit_command: Option<OsString>,
+    /// Literal argument to the exit command; repeat for each argument.
+    #[arg(long, requires = "exit_command", allow_hyphen_values = true)]
+    exit_command_arg: Vec<OsString>,
+    /// Delay the exit command by this many seconds.
+    #[arg(long, requires = "exit_command")]
+    exit_delay: Option<u64>,
     /// Program and native arguments, following --.
     #[arg(last = true, required_unless_present = "api_version")]
     command: Vec<OsString>,
@@ -162,7 +181,45 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     // Adopt before opening state, endpoints, logs or any worker resources.
-    let initial = cli.control.map(resources::control).transpose()?;
+    #[cfg(windows)]
+    if !cli.inherit.is_empty() {
+        return Err("exact extra-handle inheritance is not yet supported on Windows".into());
+    }
+    let activation = activation::Activation::discover(cli.replace_listen_pid)?;
+    let mut inherited_numbers = cli.inherit.clone();
+    if let Some(activation) = &activation {
+        for number in activation.numbers() {
+            if !inherited_numbers.contains(&number) {
+                inherited_numbers.push(number);
+            }
+        }
+    }
+    let numbers: Vec<_> = cli
+        .control
+        .iter()
+        .chain(&cli.hold)
+        .chain(&inherited_numbers)
+        .copied()
+        .collect();
+    let mut held = resources::adopt(&numbers)?;
+    let initial = cli
+        .control
+        .and_then(|number| held.remove(&number))
+        .map(resources::control)
+        .transpose()?;
+    #[cfg(unix)]
+    let inherited = inherited_numbers
+        .iter()
+        .map(|number| {
+            let resource = held
+                .remove(number)
+                .ok_or_else(|| io::Error::other("inherited resource disappeared"))?;
+            Ok(command_fds::FdMapping {
+                parent_fd: resource.as_file().map_err(io::Error::other)?.into(),
+                child_fd: i32::try_from(*number).map_err(io::Error::other)?,
+            })
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let state = State::create(directory)?;
     #[cfg(unix)]
@@ -201,8 +258,11 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         &cli,
         &mut connections,
         &mut result,
+        activation.as_ref(),
         #[cfg(unix)]
         original_oom_score,
+        #[cfg(unix)]
+        inherited,
     );
     if let Err(error) = &supervised {
         result.monitor_errors.push(error.to_string());
@@ -213,6 +273,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         }
         result.exited_at_unix_ms = unix_ms();
     }
+    drop(held);
     connections.close_listener();
     state.publish(&result)?;
     connections.broadcast(ServerMessage::Completed { result })?;
@@ -222,7 +283,64 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(Duration::from_millis(2));
     }
     connections.finish()?;
-    supervised
+    drop(connections);
+    let callback = exit_command(
+        &cli,
+        #[cfg(unix)]
+        original_oom_score,
+    );
+    // The callback runs for retained launch failures too. Its outcome never
+    // rewrites result.json or the completion already sent to clients.
+    if let Err(error) = &callback
+        && supervised.is_err()
+    {
+        let _ = writeln!(io::stderr(), "madrillo: {error}");
+    }
+    supervised?;
+    callback
+}
+
+fn exit_command(
+    cli: &Cli,
+    #[cfg(unix)] original_oom_score: Option<i32>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let Some(program) = &cli.exit_command else {
+        return Ok(());
+    };
+    if let Some(delay) = cli.exit_delay {
+        thread::sleep(Duration::from_secs(delay));
+    }
+    #[cfg(target_os = "linux")]
+    nix::sys::prctl::set_child_subreaper(false)?;
+    #[cfg(unix)]
+    let mut child = {
+        let args = std::iter::once(program.clone())
+            .chain(cli.exit_command_arg.iter().cloned())
+            .collect::<Vec<_>>();
+        let mut command = launch::command(&args, false, false, original_oom_score)?;
+        // These resources belong exclusively to the original workload.
+        command
+            .env_remove("LISTEN_PID")
+            .env_remove("LISTEN_PIDFDID")
+            .env_remove("LISTEN_FDS")
+            .env_remove("LISTEN_FDNAMES")
+            .env_remove("NOTIFY_SOCKET");
+        launch::spawn(command, None, Vec::new())?
+    };
+    #[cfg(windows)]
+    let mut child = std::process::Command::new(program)
+        .args(&cli.exit_command_arg)
+        .env_remove("LISTEN_PID")
+        .env_remove("LISTEN_PIDFDID")
+        .env_remove("LISTEN_FDS")
+        .env_remove("LISTEN_FDNAMES")
+        .env_remove("NOTIFY_SOCKET")
+        .spawn()?;
+    let status = child.wait()?;
+    if !status.success() {
+        return Err(format!("exit command failed: {status}").into());
+    }
+    Ok(())
 }
 
 fn unix_ms() -> u64 {
@@ -237,7 +355,9 @@ fn supervise(
     cli: &Cli,
     connections: &mut Connections,
     result: &mut Completion,
+    activation: Option<&activation::Activation>,
     #[cfg(unix)] original_oom_score: Option<i32>,
+    #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     let mut signals = signal_hook::iterator::Signals::new([
@@ -338,6 +458,10 @@ fn supervise(
     if let Some(cwd) = &cli.cwd {
         command.current_dir(cwd);
     }
+    activation::clear(&mut command);
+    if let Some(activation) = activation {
+        activation.configure(&mut command);
+    }
     if let Some(notify) = &notify {
         notify.configure(&mut command);
     }
@@ -396,6 +520,8 @@ fn supervise(
         terminal.as_mut(),
         #[cfg(target_os = "linux")]
         group,
+        #[cfg(unix)]
+        inherited,
     )?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();

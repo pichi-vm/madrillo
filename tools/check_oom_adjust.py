@@ -18,6 +18,9 @@ for terminal in (False, True):
         state, report = root / "state", root / "scores.json"
         command = [str(fixture), "exec-with-oom-score", "200", str(monitor),
                    "--state-dir", str(state)]
+        command += ["--exit-command", str(fixture)]
+        for argument in ["exit-hook", str(state), str(root / "hook-marker"), "0"]:
+            command += ["--exit-command-arg", argument]
         if terminal:
             command.append("--terminal")
         command += ["--", str(fixture), "oom-probe", str(report)]
@@ -26,6 +29,7 @@ for terminal in (False, True):
         result = json.loads((state / "result.json").read_bytes())
         warnings = "\n".join(result["monitor_warnings"])
         assert scores["workload"] == 200, scores
+        assert int((state / "hook-oom-score").read_text()) == 200
         if args.require_protected or scores["monitor"] == -1000:
             assert scores["monitor"] == -1000, (scores, completed.stderr)
             assert "OOM protection unavailable" not in warnings, result
@@ -34,4 +38,4 @@ for terminal in (False, True):
             assert "OOM protection unavailable" in warnings, result
         assert result["leader"] == {"type": "exit", "code": 37}, result
         assert not result["monitor_errors"], result
-print("Native pipe/terminal OOM protection and workload restoration passed")
+print("Native pipe/terminal OOM protection, workload and exit-helper restoration passed")

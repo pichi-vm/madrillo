@@ -25,19 +25,46 @@ pub(crate) fn command(
     Ok(command)
 }
 
-pub(crate) fn spawn(mut command: Command, membership: Option<std::fs::File>) -> io::Result<Child> {
+pub(crate) fn spawn(
+    mut command: Command,
+    membership: Option<std::fs::File>,
+    mut mappings: Vec<FdMapping>,
+) -> io::Result<Child> {
+    let inherited = mappings
+        .iter()
+        .map(|mapping| mapping.child_fd.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let report_fd = mappings
+        .iter()
+        .map(|mapping| mapping.child_fd)
+        .max()
+        .unwrap_or(2)
+        .checked_add(1)
+        .ok_or_else(|| io::Error::other("inherited descriptor is too large"))?;
+    let membership_fd = report_fd
+        .checked_add(1)
+        .ok_or_else(|| io::Error::other("inherited descriptor is too large"))?;
     // Equivalent to std's exec-error pipe: CLOEXEC closes it at successful exec.
     let (mut errors, report) = io::pipe()?;
     let flags = OFlag::from_bits_truncate(fcntl(&errors, FcntlArg::F_GETFL)?);
     fcntl(&errors, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
-    let mut mappings = vec![FdMapping {
+    mappings.push(FdMapping {
         parent_fd: report.into(),
-        child_fd: 21,
-    }];
+        child_fd: report_fd,
+    });
+    command
+        .arg(report_fd.to_string())
+        .arg(if membership.is_some() {
+            membership_fd.to_string()
+        } else {
+            "-".into()
+        })
+        .arg(inherited);
     if let Some(file) = membership {
         mappings.push(FdMapping {
             parent_fd: file.into(),
-            child_fd: 22,
+            child_fd: membership_fd,
         });
     }
     command.fd_mappings(mappings).map_err(io::Error::other)?;
@@ -103,9 +130,26 @@ fn adopt(fd: i32) -> io::Result<filedescriptor::FileDescriptor> {
 }
 
 pub(crate) fn exec() -> io::Result<()> {
-    let mut report = adopt(21)?;
+    use std::os::fd::AsRawFd;
+    let mut args = std::env::args_os().skip(2).collect::<Vec<_>>();
+    let inherited = args
+        .pop()
+        .ok_or_else(|| io::Error::other("missing inherited descriptors"))?;
+    let membership = args
+        .pop()
+        .ok_or_else(|| io::Error::other("missing placement descriptor"))?;
+    let report_fd = args
+        .pop()
+        .ok_or_else(|| io::Error::other("missing error descriptor"))?;
+    let mut report = adopt(
+        report_fd
+            .to_str()
+            .ok_or_else(|| io::Error::other("invalid error descriptor"))?
+            .parse()
+            .map_err(io::Error::other)?,
+    )?;
     let error = (|| -> io::Result<()> {
-        let mut args = std::env::args_os().skip(2);
+        let mut args = args.into_iter();
         let terminal = args.next().is_some_and(|arg| arg == "tty");
         let scoped = args.next().is_some_and(|arg| arg == "cgroup");
         let score = args
@@ -121,9 +165,25 @@ pub(crate) fn exec() -> io::Result<()> {
             )?;
         }
         if scoped {
-            let mut membership = adopt(22)?;
+            let mut membership = adopt(
+                membership
+                    .to_str()
+                    .ok_or_else(|| io::Error::other("invalid placement descriptor"))?
+                    .parse()
+                    .map_err(io::Error::other)?,
+            )?;
             membership.write_all(b"0")?;
         }
+        let mut keep = vec![report.as_raw_fd()];
+        for number in inherited
+            .to_str()
+            .ok_or_else(|| io::Error::other("invalid inherited descriptors"))?
+            .split(',')
+            .filter(|part| !part.is_empty())
+        {
+            keep.push(number.parse().map_err(io::Error::other)?);
+        }
+        crate::resources::close_unlisted(&keep)?;
         if terminal {
             nix::unistd::setsid()?;
             rustix::process::ioctl_tiocsctty(io::stdin().as_fd())?;
@@ -133,7 +193,16 @@ pub(crate) fn exec() -> io::Result<()> {
         let program = args
             .next()
             .ok_or_else(|| io::Error::other("launcher omitted program"))?;
-        Err(Command::new(program).args(args).exec())
+        let mut command = Command::new(program);
+        command.args(args);
+        if std::env::var("LISTEN_PID")
+            .ok()
+            .and_then(|pid| pid.parse::<u32>().ok())
+            == Some(nix::unistd::getppid().as_raw() as u32)
+        {
+            command.env("LISTEN_PID", std::process::id().to_string());
+        }
+        Err(command.exec())
     })();
     if let Err(error) = &error {
         let message = error.to_string();

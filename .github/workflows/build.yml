@@ -46,6 +46,9 @@ jobs:
         run: |
           python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture
           sudo python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture --require-protected
+      - name: Named socket activation with actual child PID
+        if: runner.os == 'Linux'
+        run: python3 tools/check_activation.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Build pinned conmon reference (test oracle only)
         if: runner.os == 'Linux'
         run: |

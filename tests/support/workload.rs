@@ -20,6 +20,137 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        Some("held-probe") => {
+            let path = args.get(1).ok_or("held file missing")?;
+            #[cfg(unix)]
+            {
+                let file = std::fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .open(path)?;
+                match file.try_lock() {
+                    Err(std::fs::TryLockError::WouldBlock) => {}
+                    other => return Err(format!("held lock not retained: {other:?}").into()),
+                }
+            }
+            #[cfg(windows)]
+            match std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(path)
+            {
+                Err(error) if error.raw_os_error() == Some(32) => {}
+                _ => return Err("exclusive held handle was not retained".into()),
+            }
+            Ok(37)
+        }
+        Some("held-hook") => {
+            let state = std::path::Path::new(args.get(1).ok_or("state missing")?);
+            let result: madrillo::Completion =
+                serde_json::from_slice(&std::fs::read(state.join("result.json"))?)?;
+            if result.leader != (madrillo::LeaderResult::Exit { code: 37 }) {
+                return Err("held probe failed".into());
+            }
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(args.get(2).ok_or("file missing")?)?;
+            file.try_lock()?;
+            std::fs::write(args.get(3).ok_or("marker missing")?, b"released")?;
+            Ok(0)
+        }
+        #[cfg(unix)]
+        Some("inherited-probe") => {
+            use std::os::fd::AsRawFd;
+            struct Inherited(i32);
+            impl AsRawFd for Inherited {
+                fn as_raw_fd(&self) -> i32 {
+                    self.0
+                }
+            }
+            let number: i32 = args
+                .get(1)
+                .ok_or("descriptor missing")?
+                .to_str()
+                .ok_or("invalid descriptor")?
+                .parse()?;
+            let mut pipe = filedescriptor::FileDescriptor::dup(&Inherited(number))?;
+            if filedescriptor::FileDescriptor::dup(&Inherited(22)).is_ok() {
+                return Err("unlisted descriptor leaked to child".into());
+            }
+            pipe.write_all(b"opaque\0\xff")?;
+            Ok(37)
+        }
+        #[cfg(target_os = "linux")]
+        Some("activation-probe") => {
+            use std::os::fd::{AsRawFd, OwnedFd};
+            use std::os::unix::net::UnixListener;
+            struct Inherited(i32);
+            impl AsRawFd for Inherited {
+                fn as_raw_fd(&self) -> i32 {
+                    self.0
+                }
+            }
+            if std::env::var("LISTEN_PID")?.parse::<u32>()? != std::process::id()
+                || std::env::var("LISTEN_FDS")? != "2"
+                || std::env::var("LISTEN_FDNAMES")? != "first:second"
+            {
+                return Err("incorrect activation metadata".into());
+            }
+            for number in 3..=4 {
+                let fd: OwnedFd = filedescriptor::FileDescriptor::dup(&Inherited(number))?
+                    .as_file()?
+                    .into();
+                let listener = UnixListener::from(fd);
+                let (mut connection, _) = listener.accept()?;
+                let mut payload = [0; 5];
+                connection.read_exact(&mut payload)?;
+                connection.write_all(&payload)?;
+            }
+            Ok(37)
+        }
+        Some("exit-hook") => {
+            let state = std::path::Path::new(args.get(1).ok_or("state missing")?);
+            let result: madrillo::Completion =
+                serde_json::from_slice(&std::fs::read(state.join("result.json"))?)?;
+            if result.leader != (madrillo::LeaderResult::Exit { code: 37 }) {
+                return Err("hook did not see retained workload exit".into());
+            }
+            for name in [
+                "LISTEN_PID",
+                "LISTEN_PIDFDID",
+                "LISTEN_FDS",
+                "LISTEN_FDNAMES",
+                "NOTIFY_SOCKET",
+            ] {
+                if std::env::var_os(name).is_some() {
+                    return Err(format!("hook inherited workload environment {name}").into());
+                }
+            }
+            let mut output = Vec::new();
+            for arg in &args[4..] {
+                #[cfg(unix)]
+                output.extend_from_slice(arg.as_encoded_bytes());
+                #[cfg(windows)]
+                {
+                    use std::os::windows::ffi::OsStrExt;
+                    output.extend(arg.encode_wide().flat_map(u16::to_le_bytes));
+                }
+                output.push(b'\n');
+            }
+            std::fs::write(args.get(2).ok_or("marker missing")?, output)?;
+            #[cfg(target_os = "linux")]
+            std::fs::write(
+                state.join("hook-oom-score"),
+                std::fs::read("/proc/self/oom_score_adj")?,
+            )?;
+            Ok(args
+                .get(3)
+                .ok_or("hook status missing")?
+                .to_str()
+                .ok_or("invalid status")?
+                .parse()?)
+        }
         Some("terminal-probe") => {
             use std::io::IsTerminal;
             if !io::stdin().is_terminal()

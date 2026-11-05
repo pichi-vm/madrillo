@@ -244,3 +244,71 @@ fn invalid_initial_resources_are_rejected_before_state_creation()
     }
     Ok(())
 }
+
+#[test]
+fn exit_command_observes_final_result_and_preserves_native_arguments()
+-> Result<(), Box<dyn std::error::Error>> {
+    for hook_status in [0, 73] {
+        let root = tempfile::tempdir()?;
+        let state = root.path().join("state");
+        let marker = root.path().join("hook-marker");
+        let argument = OsStr::new("literal 'quotes' $values `backticks` —");
+        let code = hook_status.to_string();
+        let mut command = Command::new(env!("CARGO_BIN_EXE_madrillo"));
+        command
+            .arg("--state-dir")
+            .arg(&state)
+            .arg("--exit-command")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"));
+        for arg in [
+            OsStr::new("exit-hook"),
+            state.as_os_str(),
+            marker.as_os_str(),
+            OsStr::new(&code),
+            argument,
+        ] {
+            command.arg("--exit-command-arg").arg(arg);
+        }
+        let started = Instant::now();
+        if hook_status == 0 {
+            command.args(["--exit-delay", "1"]);
+        }
+        command
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("emit");
+        let mut child = command.spawn()?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break status;
+            }
+            if Instant::now() >= deadline {
+                child.kill()?;
+                child.wait()?;
+                return Err("exit command test deadline".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        };
+        assert_eq!(status.success(), hook_status == 0);
+        if hook_status == 0 {
+            assert!(started.elapsed() >= Duration::from_secs(1));
+        }
+        let result: Completion = serde_json::from_slice(&fs::read(state.join("result.json"))?)?;
+        assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+        assert!(result.monitor_errors.is_empty(), "{result:?}");
+        #[cfg(unix)]
+        let mut expected = argument.as_encoded_bytes().to_vec();
+        #[cfg(windows)]
+        let mut expected = {
+            use std::os::windows::ffi::OsStrExt;
+            argument
+                .encode_wide()
+                .flat_map(u16::to_le_bytes)
+                .collect::<Vec<_>>()
+        };
+        expected.push(b'\n');
+        assert_eq!(fs::read(marker)?, expected);
+    }
+    Ok(())
+}

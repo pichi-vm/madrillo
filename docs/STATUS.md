@@ -203,3 +203,40 @@ contaminate passthrough stderr. Local pipe/terminal tests passed with denied
 protection; CI additionally requires successful privileged protection. Restoration
 for the exit helper will accompany exit-command implementation. Local full
 current tests and Windows cross-clippy passed; full C01-C30 streak remains 0.
+
+Native OOM qualification passed at `1b543c8` on all three hosts:
+[run 42110646765](https://github.com/pichi-vm/madrillo/actions/runs/42110646765).
+The Linux job verified successful privileged protection and restored workload
+policy; local unprivileged denial remains explicitly visible in retained warnings.
+
+Exit commands now run after publication/final delivery with native repeated
+arguments and optional delay. Their failure changes the monitor's command outcome
+without changing the retained workload result. Linux restores the original OOM
+adjustment in exit helpers, and activation/notification environment is removed.
+The callback has conmon's explicit-command lifetime; no new callback timeout or
+exactly-once promise is introduced. Native-argument, delay, failure and OOM
+restoration tests passed locally; native CI verification is pending.
+
+Resource adoption now validates the whole bounded transfer before closing any
+original. It rejects duplicate roles and a subtle invalid-number case where an
+earlier duplicate could otherwise allocate that number. `--hold` retains only a
+non-inheritable copy until cleanup and releases it before publication/notification.
+The native reservation fixture uses Unix file locks or Windows exclusive file
+sharing and checks release in the exit command. Windows held-file verification
+is pending; Windows socket reservations have not been qualified.
+
+Unix `--inherit` preserves exact requested descriptor numbers in pipe and PTY
+launches. Internal setup descriptors are assigned beyond requested numbers, and
+unlisted descriptors close in both monitor adoption and the fresh launcher. No
+child argument is rewritten. Local tests cover descriptor 21 (the former fixed
+setup descriptor), an unlisted descriptor and duplication-time invalid claims.
+Windows exact extra-handle inheritance still rejects explicitly rather than
+claiming a working contract; named extra capture is still pending.
+
+Linux systemd socket activation now adopts the FD 3.. range and names, checks the
+PID/count contract, and sets LISTEN_PID to the actual workload in the launcher.
+`--replace-listen-pid` permits the explicit manager handoff conmon supports.
+Stale LISTEN_PIDFDID is removed when forwarding to a different process. Real
+systemd-socket-activate tests passed for two named sockets in pipe and PTY modes.
+Local current tests, cgroup placement/escaped-descendant/OOM tests, notification
+service tests and Windows cross-clippy passed. Full conformance remains 0/3.
