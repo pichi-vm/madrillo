@@ -146,22 +146,23 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         exited_at_unix_ms: 0,
         cleanup: CleanupResult::Unknown,
         oom: OomEvidence::Unavailable {
-            reason: "OOM observation is not implemented yet".into(),
+            reason: "workload did not reach OOM observation".into(),
         },
         log_errors: Vec::new(),
+        monitor_errors: Vec::new(),
         output_truncated: false,
     };
-    if let Err(error) = supervise(&cli, &mut connections, &mut result) {
-        result.log_errors.push(error.to_string());
+    let supervised = supervise(&cli, &mut connections, &mut result);
+    if let Err(error) = &supervised {
+        result.monitor_errors.push(error.to_string());
         if result.cause == CompletionCause::LaunchFailed {
             result.leader = LeaderResult::SpawnFailed {
                 message: error.to_string(),
             };
         }
         result.exited_at_unix_ms = unix_ms();
-        state.publish(&result)?;
-        return Err(error);
     }
+    connections.close_listener();
     state.publish(&result)?;
     connections.broadcast(ServerMessage::Completed { result })?;
     let deadline = Instant::now() + Duration::from_secs(1);
@@ -170,7 +171,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(Duration::from_millis(2));
     }
     connections.finish()?;
-    Ok(())
+    supervised
 }
 
 fn unix_ms() -> u64 {
@@ -250,7 +251,7 @@ fn supervise(
         #[cfg(windows)]
         {
             let _ = terminal;
-            return Err("ConPTY is not implemented yet".into());
+            Input::disabled()
         }
     } else if passthrough {
         command
@@ -307,8 +308,11 @@ fn supervise(
                 leader_pid: child.id(),
             })
             .map_err(io::Error::other)?;
-        #[cfg(unix)]
-        if let Some(terminal) = &terminal {
+        if let Some(terminal) = &mut terminal {
+            #[cfg(windows)]
+            {
+                input = Input::terminal_windows(terminal.writer()?)?;
+            }
             capture.read(terminal.reader()?, Stream::Stdout)?;
         }
         if let Some(stdout) = child.stdout() {
@@ -376,7 +380,8 @@ fn supervise(
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         if let Err(error) = service(connections, &capture, &mut input, terminal.as_ref()) {
-            result.log_errors.push(error.to_string());
+            result.monitor_errors.push(error.to_string());
+            result.output_truncated = true;
             break;
         }
         match capture.done.try_recv() {

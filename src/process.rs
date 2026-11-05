@@ -5,17 +5,28 @@ use std::{
 };
 
 pub(crate) struct Workload {
+    observed: Option<LeaderResult>,
     #[cfg(target_os = "linux")]
     group: Option<crate::cgroup::Cgroup>,
     #[cfg(unix)]
     child: std::process::Child,
     #[cfg(windows)]
-    child: Box<dyn process_wrap::std::ChildWrapper>,
+    child: WindowsChild,
 }
 
 impl Workload {
     pub(crate) fn id(&self) -> u32 {
-        self.child.id()
+        #[cfg(unix)]
+        {
+            self.child.id()
+        }
+        #[cfg(windows)]
+        {
+            match &self.child {
+                WindowsChild::Pipe(child) => child.id(),
+                WindowsChild::Terminal(child) => child.id(),
+            }
+        }
     }
     pub(crate) fn spawn(
         command: Command,
@@ -36,6 +47,7 @@ impl Workload {
             let membership = None;
             let child = crate::launch::spawn(command, membership)?;
             Ok(Self {
+                observed: None,
                 child,
                 #[cfg(target_os = "linux")]
                 group,
@@ -44,15 +56,16 @@ impl Workload {
 
         #[cfg(windows)]
         {
-            if terminal.is_some() {
-                return Err(io::Error::new(
-                    io::ErrorKind::Unsupported,
-                    "ConPTY is not implemented yet",
-                ));
-            }
-            use process_wrap::std::{CommandWrap, JobObject};
-            let child = CommandWrap::from(command).wrap(JobObject).spawn()?;
-            Ok(Self { child })
+            let child = if let Some(terminal) = terminal {
+                WindowsChild::Terminal(terminal.spawn(command)?)
+            } else {
+                use process_wrap::std::{CommandWrap, JobObject};
+                WindowsChild::Pipe(CommandWrap::from(command).wrap(JobObject).spawn()?)
+            };
+            Ok(Self {
+                child,
+                observed: None,
+            })
         }
     }
     pub(crate) fn stdout(&mut self) -> Option<ChildStdout> {
@@ -62,7 +75,10 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            self.child.stdout().take()
+            match &mut self.child {
+                WindowsChild::Pipe(child) => child.stdout().take(),
+                WindowsChild::Terminal(_) => None,
+            }
         }
     }
     pub(crate) fn stderr(&mut self) -> Option<ChildStderr> {
@@ -72,7 +88,10 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            self.child.stderr().take()
+            match &mut self.child {
+                WindowsChild::Pipe(child) => child.stderr().take(),
+                WindowsChild::Terminal(_) => None,
+            }
         }
     }
     pub(crate) fn exited(&mut self) -> io::Result<bool> {
@@ -90,6 +109,18 @@ impl Workload {
                     return Ok(false);
                 };
                 if u32::try_from(pid.as_raw()).map_err(io::Error::other)? == self.child.id() {
+                    self.observed = match status {
+                        nix::sys::wait::WaitStatus::Exited(_, code) => {
+                            Some(LeaderResult::Exit { code: code as u32 })
+                        }
+                        nix::sys::wait::WaitStatus::Signaled(_, signal, core_dumped) => {
+                            Some(LeaderResult::Signal {
+                                signal: signal as u32,
+                                core_dumped,
+                            })
+                        }
+                        _ => None,
+                    };
                     return Ok(true);
                 }
                 waitpid(pid, Some(WaitPidFlag::WNOHANG))?;
@@ -102,15 +133,42 @@ impl Workload {
             let pid = Pid::from_raw(i32::try_from(self.child.id()).map_err(io::Error::other)?)
                 .ok_or_else(|| io::Error::other("invalid child PID"))?;
             // Keep the leader waitable until scope cleanup, preventing PID reuse.
-            Ok(waitid(
+            let status = waitid(
                 WaitId::Pid(pid),
                 WaitIdOptions::EXITED | WaitIdOptions::NOHANG | WaitIdOptions::NOWAIT,
-            )?
-            .is_some())
+            )?;
+            if let Some(status) = status {
+                self.observed = status
+                    .exit_status()
+                    .map(|code| LeaderResult::Exit { code: code as u32 })
+                    .or_else(|| {
+                        status
+                            .terminating_signal()
+                            .map(|signal| LeaderResult::Signal {
+                                signal: signal as u32,
+                                core_dumped: status.dumped(),
+                            })
+                    });
+                Ok(true)
+            } else {
+                Ok(false)
+            }
         }
         #[cfg(windows)]
         {
-            Ok(self.child.try_wait()?.is_some())
+            self.observed =
+                match &mut self.child {
+                    // process-wrap's outer try_wait consumes Job completion events.
+                    // Poll the leader directly; reserve the Job event for final wait.
+                    WindowsChild::Pipe(child) => child.inner_mut().try_wait()?.map(native_result),
+                    WindowsChild::Terminal(child) => child
+                        .try_wait()
+                        .map_err(io::Error::other)?
+                        .map(|status| LeaderResult::Exit {
+                            code: status.code(),
+                        }),
+                };
+            Ok(self.observed.is_some())
         }
     }
     pub(crate) fn force(&mut self) -> io::Result<()> {
@@ -133,7 +191,10 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            self.child.start_kill()
+            match &mut self.child {
+                WindowsChild::Pipe(child) => child.start_kill(),
+                WindowsChild::Terminal(child) => child.kill().map_err(io::Error::other),
+            }
         }
     }
     #[cfg(unix)]
@@ -171,6 +232,7 @@ impl Workload {
         mut errors: Vec<String>,
     ) -> (LeaderResult, CleanupResult, OomEvidence) {
         use std::{sync::mpsc, thread, time::Duration};
+        let known = self.observed.clone().unwrap_or(LeaderResult::Unknown);
         let (done, complete) = mpsc::sync_channel(1);
         let spawned = thread::Builder::new()
             .name("madrillo-reap".into())
@@ -179,7 +241,7 @@ impl Workload {
                     Ok(leader) => leader,
                     Err(error) => {
                         errors.push(format!("reap workload: {error}"));
-                        LeaderResult::Unknown
+                        self.observed.clone().unwrap_or(LeaderResult::Unknown)
                     }
                 };
                 let cleanup = self.cleanup_result(errors);
@@ -189,7 +251,7 @@ impl Workload {
             Ok(_) => match complete.recv_timeout(Duration::from_secs(5)) {
                 Ok(result) => result,
                 Err(error) => (
-                    LeaderResult::Unknown,
+                    known,
                     CleanupResult::Incomplete {
                         errors: vec![format!("workload reaping did not complete: {error}")],
                     },
@@ -199,7 +261,7 @@ impl Workload {
                 ),
             },
             Err(error) => (
-                LeaderResult::Unknown,
+                known,
                 CleanupResult::Incomplete {
                     errors: vec![format!("create reap worker: {error}")],
                 },
@@ -210,11 +272,26 @@ impl Workload {
         }
     }
     pub(crate) fn reap(&mut self) -> io::Result<LeaderResult> {
-        Ok(native_result(self.child.wait()?))
+        #[cfg(unix)]
+        {
+            Ok(native_result(self.child.wait()?))
+        }
+        #[cfg(windows)]
+        {
+            match &mut self.child {
+                WindowsChild::Pipe(child) => Ok(native_result(child.wait()?)),
+                WindowsChild::Terminal(child) => Ok(LeaderResult::Exit {
+                    code: child.wait().map_err(io::Error::other)?.code(),
+                }),
+            }
+        }
     }
     fn cleanup_result(&self, errors: Vec<String>) -> CleanupResult {
-        #[cfg(unix)]
         let mut errors = errors;
+        #[cfg(windows)]
+        if matches!(self.child, WindowsChild::Terminal(_)) {
+            errors.push("ConPTY job termination was requested, but the dependency does not expose a job-empty observation".into());
+        }
         #[cfg(target_os = "linux")]
         if let Some(group) = &self.group {
             if let Err(error) = group.wait_empty() {
@@ -276,4 +353,10 @@ fn reap_descendants() -> io::Result<()> {
             Ok(_) => {}
         }
     }
+}
+
+#[cfg(windows)]
+enum WindowsChild {
+    Pipe(Box<dyn process_wrap::std::ChildWrapper>),
+    Terminal(conpty_oxide::blocking::Child),
 }

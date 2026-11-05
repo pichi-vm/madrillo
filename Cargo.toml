@@ -9,8 +9,8 @@ description = "A native process monitor inspired by conmon"
 
 [features]
 default = []
-cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix", "dep:interprocess", "dep:filedescriptor", "dep:widestring", "dep:signal-hook", "dep:command-fds", "dep:system-interface"]
-qualification = ["cli", "dep:filedescriptor", "dep:portable-pty", "dep:process-wrap", "dep:command-fds", "dep:nix", "dep:rustix"]
+cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix", "dep:interprocess", "dep:filedescriptor", "dep:widestring", "dep:signal-hook", "dep:command-fds", "dep:system-interface", "dep:conpty-oxide"]
+qualification = ["cli", "dep:filedescriptor", "dep:portable-pty", "dep:process-wrap", "dep:command-fds", "dep:nix", "dep:rustix", "dep:terminal_size"]
 
 [lib]
 path = "src/lib.rs"
@@ -55,6 +55,7 @@ cap-fs-ext = { version = "=4.0.3", optional = true }
 interprocess = { version = "=2.4.7", optional = true }
 filedescriptor = { version = "=0.8.3", optional = true }
 portable-pty = { version = "=0.9.0", optional = true }
+terminal_size = { version = "=0.4.3", optional = true }
 process-wrap = { version = "=10.0.1", features = ["std"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
@@ -66,6 +67,7 @@ signal-hook = { version = "0.3", optional = true }
 [target.'cfg(windows)'.dependencies]
 widestring = { version = "1", optional = true }
 system-interface = { version = "=0.27.3", optional = true }
+conpty-oxide = { version = "=0.1.2", optional = true }
 
 [dev-dependencies]
 serde_json = "1"

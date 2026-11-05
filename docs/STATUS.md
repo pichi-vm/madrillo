@@ -84,7 +84,7 @@ Unix terminal operation is implemented and tested on Linux: controlling TTY,
 size/resize, merged capture, persistent detach/reattach, and native exit status.
 The fresh same-binary launcher reports setup/exec errors through a close-on-exec
 error pipe. This is internal exec error reporting, not a client handshake.
-ConPTY remains explicitly unsupported. Unix termination-signal forwarding has a
+ConPTY integration is now awaiting native verification, as described below. Unix termination-signal forwarding has a
 real process test. Reaping and retained-state fsync waits are now bounded.
 
 The pinned conmon source has been built locally as a test oracle. The same
@@ -112,3 +112,26 @@ Windows control tests. Large control frames still exceeded their test deadline;
 larger explicit pipe buffers alone did not fix it at `a42c800`. Windows writes
 are now split into bounded 8KiB native operations, with exact progress included
 in a failed test diagnostic. Native verification of that change remains pending.
+
+A safe ConPTY implementation now uses conpty-oxide 0.1.2, whose windows-spawn
+0.1.0 dependency composes pseudoconsole creation with Job assignment. The OS
+ConPTY backend is selected explicitly, without adjacent DLL discovery. Terminal
+input runs through one bounded worker and output uses the existing capture path.
+Tests cover size/resize, detach/reattach, native exit and descendant cleanup on
+all native CI targets. Windows execution is pending. This is not yet full C09:
+extra inherited handles are unsupported by this dependency, and it does not
+expose a job-empty observation. Windows terminal results therefore truthfully
+record incomplete cleanup evidence even after requesting tree termination.
+Its terminal Job uses kill-on-close; the separate pipe path used by dillo retains
+its no-kill-on-close policy so it can perform console-loss cleanup.
+
+Completion now separates monitor errors from log errors, and the listener is
+released before result publication/final notification. Launch failures also
+send the retained completion to an existing initial client.
+
+At `3c172e2`, Linux/macOS qualification passed including the real Linux cgroup
+suite; all four Windows attachment tests passed. Windows core testing then
+exposed a process-wrap completion-port race: its outer try_wait consumed the
+Job-empty event that its later wait needed. Madrillo now polls the inner leader
+and reserves the Job event for final cleanup. An already-observed native leader
+result is retained separately even if cleanup/reaping times out on any host.

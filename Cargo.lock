@@ -277,6 +277,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "conpty-oxide"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17f99041be76720d952c719b4f405f538019fe111c3512b3b337d1261a4eee87"
+dependencies = [
+ "thiserror 2.0.21",
+ "windows-spawn",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -549,6 +560,7 @@ dependencies = [
  "chrono",
  "clap",
  "command-fds",
+ "conpty-oxide",
  "filedescriptor",
  "interprocess",
  "nix 0.31.3",
@@ -560,6 +572,7 @@ dependencies = [
  "signal-hook",
  "system-interface",
  "tempfile",
+ "terminal_size",
  "thiserror 2.0.21",
  "widestring",
 ]
@@ -892,6 +905,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminal_size"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b8cb979cb11c32ce1603f8137b22262a9d131aaa5c37b5678025f22b8becd0"
+dependencies = [
+ "rustix 1.1.6",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1136,6 +1159,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7781fa89eaf60850ac3d2da7af8e5242a5ea78d1a11c49bf2910bb5a73853eb5"
 dependencies = [
  "windows-link",
+]
+
+[[package]]
+name = "windows-spawn"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2de3bd5b666ddb82bdd91c438afbe6a413fc21725d10e3e0b8d1d1c4afdd91c6"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

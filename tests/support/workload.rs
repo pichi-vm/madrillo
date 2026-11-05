@@ -20,9 +20,8 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
-        #[cfg(unix)]
         Some("terminal-probe") => {
-            use std::{io::IsTerminal, os::fd::AsFd};
+            use std::io::IsTerminal;
             if !io::stdin().is_terminal()
                 || !io::stdout().is_terminal()
                 || !io::stderr().is_terminal()
@@ -36,8 +35,9 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 }
                 match line.trim() {
                     "size" => {
-                        let size = rustix::termios::tcgetwinsize(io::stdin().as_fd())?;
-                        writeln!(io::stdout(), "SIZE={}x{}", size.ws_row, size.ws_col)?;
+                        let (terminal_size::Width(cols), terminal_size::Height(rows)) =
+                            terminal_size::terminal_size().ok_or("terminal size unavailable")?;
+                        writeln!(io::stdout(), "SIZE={rows}x{cols}")?;
                         io::stdout().flush()?;
                     }
                     "exit" => return Ok(37),

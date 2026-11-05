@@ -70,6 +70,9 @@ impl Monitor {
         ))
     }
     fn spawn(mode: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::spawn_with_flags(mode, &[])
+    }
+    fn spawn_with_flags(mode: &str, flags: &[&str]) -> Result<Self, Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
         #[cfg(unix)]
         let endpoint = root.path().join("control.sock");
@@ -87,7 +90,9 @@ impl Monitor {
             .arg(root.path().join("state"))
             .arg("--listen")
             .arg(&endpoint)
-            .args(["--timeout", "5", "--log-global-size-max", "1024", "--"])
+            .args(["--timeout", "5", "--log-global-size-max", "1024"])
+            .args(flags)
+            .arg("--")
             .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
             .arg(mode)
             .spawn()?;
@@ -128,20 +133,35 @@ impl Monitor {
     }
 }
 
-#[cfg(unix)]
 #[test]
 fn terminal_size_resize_reattach_and_native_exit() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(unix)]
     let (mut monitor, mut client) = Monitor::initial_with_flags(
         "terminal-probe",
         false,
         &["--terminal", "--size", "31x99", "--stdin"],
     )?;
-    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
-    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    #[cfg(unix)]
+    {
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    }
+    #[cfg(windows)]
+    let (mut monitor, mut client) = {
+        let monitor =
+            Monitor::spawn_with_flags("terminal-probe", &["--terminal", "--size", "31x99"])?;
+        let mut client = monitor.connect()?;
+        client.attach(true)?;
+        (monitor, client)
+    };
+    #[cfg(unix)]
+    let (size_line, exit_line) = (b"size\n", b"exit\n");
+    #[cfg(windows)]
+    let (size_line, exit_line) = (b"size\r", b"exit\r");
     for (rows, cols) in [(31, 99), (42, 107)] {
         client.send(ClientMessage::Resize { rows, cols })?;
         client.send(ClientMessage::Input {
-            bytes: b"size\n".to_vec(),
+            bytes: size_line.to_vec(),
         })?;
         let expected = format!("SIZE={rows}x{cols}");
         let mut text = Vec::new();
@@ -168,7 +188,7 @@ fn terminal_size_resize_reattach_and_native_exit() -> Result<(), Box<dyn std::er
     let mut client = monitor.connect()?;
     client.attach(true)?;
     client.send(ClientMessage::Input {
-        bytes: b"exit\n".to_vec(),
+        bytes: exit_line.to_vec(),
     })?;
     loop {
         match client.next()? {

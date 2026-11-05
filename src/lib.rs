@@ -69,6 +69,7 @@ pub struct Completion {
     pub cleanup: CleanupResult,
     pub oom: OomEvidence,
     pub log_errors: Vec<String>,
+    pub monitor_errors: Vec<String>,
     pub output_truncated: bool,
 }
 

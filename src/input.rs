@@ -9,7 +9,7 @@ pub(crate) struct Input {
     #[cfg(unix)]
     writer: Option<std::fs::File>,
     #[cfg(windows)]
-    writer: Option<WindowsWriter>,
+    writer: Option<WindowsInput>,
     pending: Vec<u8>,
     written: usize,
     closing: bool,
@@ -24,6 +24,30 @@ impl Input {
             written: 0,
             closing: false,
         }
+    }
+    #[cfg(windows)]
+    pub(crate) fn terminal_windows(
+        mut writer: conpty_oxide::blocking::OwnedWriteHalf,
+    ) -> io::Result<Self> {
+        use std::sync::mpsc;
+        let (send, receive) = mpsc::sync_channel::<Vec<u8>>(8);
+        let (failed, errors) = mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("madrillo-terminal-input".into())
+            .spawn(move || {
+                while let Ok(bytes) = receive.recv() {
+                    if let Err(error) = writer.write_all(&bytes) {
+                        let _ = failed.try_send(error);
+                        break;
+                    }
+                }
+            })?;
+        Ok(Self {
+            writer: Some(WindowsInput::Terminal { send, errors }),
+            pending: Vec::new(),
+            written: 0,
+            closing: false,
+        })
     }
     pub(crate) fn disabled() -> Self {
         Self {
@@ -65,7 +89,7 @@ impl Input {
             let writer = WindowsWriter {
                 pipe: listener.accept()?,
             };
-            (writer, Stdio::from(reader))
+            (WindowsInput::Pipe(writer), Stdio::from(reader))
         };
         Ok((
             Self {
@@ -148,7 +172,7 @@ impl Input {
             self.close();
         }
         #[cfg(windows)]
-        if let Some(writer) = self.writer.take() {
+        if let Some(WindowsInput::Pipe(writer)) = self.writer.take() {
             // One bounded worker for this input's sole EOF transition. Windows
             // must flush kernel pipe bytes before closing; a non-reading child
             // must not block deadline or control processing on the monitor.
@@ -183,5 +207,40 @@ impl Drop for WindowsWriter {
         // All drain waits are explicitly owned above. Do not let dependency
         // drop behavior accumulate background workers for stalled consumers.
         self.pipe.assume_flushed();
+    }
+}
+
+#[cfg(windows)]
+enum WindowsInput {
+    Pipe(WindowsWriter),
+    Terminal {
+        send: std::sync::mpsc::SyncSender<Vec<u8>>,
+        errors: std::sync::mpsc::Receiver<io::Error>,
+    },
+}
+#[cfg(windows)]
+impl Write for WindowsInput {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::Pipe(writer) => writer.write(bytes),
+            Self::Terminal { send, errors } => {
+                if let Ok(error) = errors.try_recv() {
+                    return Err(error);
+                }
+                let count = bytes.len().min(8192);
+                match send.try_send(bytes[..count].to_vec()) {
+                    Ok(()) => Ok(count),
+                    Err(std::sync::mpsc::TrySendError::Full(_)) => {
+                        Err(io::ErrorKind::WouldBlock.into())
+                    }
+                    Err(std::sync::mpsc::TrySendError::Disconnected(_)) => {
+                        Err(io::ErrorKind::BrokenPipe.into())
+                    }
+                }
+            }
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
     }
 }

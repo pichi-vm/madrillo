@@ -68,7 +68,7 @@ fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::er
     for _ in 0..12 {
         let root = tempfile::tempdir()?;
         let result = run(root.path(), "emit", &[], &[])?;
-        assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+        assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
         assert_eq!(result.cause, CompletionCause::LeaderExit);
         assert!(result.log_errors.is_empty(), "{:?}", result.log_errors);
         assert!(!result.output_truncated);
@@ -106,7 +106,7 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
     let root = tempfile::tempdir()?;
     let heartbeat = root.path().join("heartbeat");
     let result = run(root.path(), "tree", &[], &[heartbeat.as_os_str()])?;
-    assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
     let before = fs::read(&heartbeat)?;
     assert!(!before.is_empty());
     std::thread::sleep(Duration::from_millis(150));
@@ -163,5 +163,24 @@ fn adopted_orphans_are_reaped_while_leader_is_running() -> Result<(), Box<dyn st
     let root = tempfile::tempdir()?;
     let result = run(root.path(), "orphan-reap", &[], &[])?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 0 });
+    Ok(())
+}
+
+#[test]
+fn terminal_leader_exit_terminates_descendants() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let heartbeat = root.path().join("heartbeat");
+    let result = run(
+        root.path(),
+        "tree",
+        &["--terminal"],
+        &[heartbeat.as_os_str()],
+    )?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
+    assert!(result.log_errors.is_empty(), "{:?}", result.log_errors);
+    let before = fs::read(&heartbeat)?;
+    assert!(!before.is_empty());
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(fs::read(heartbeat)?, before);
     Ok(())
 }

@@ -171,6 +171,9 @@ impl Client {
 }
 
 impl Connections {
+    pub(crate) fn close_listener(&mut self) {
+        self.listener = None;
+    }
     pub(crate) fn finish(&mut self) -> io::Result<()> {
         #[cfg(unix)]
         self.clients.clear();
