@@ -1,5 +1,6 @@
 pub(crate) mod cri;
 pub(crate) mod file;
+pub(crate) mod journal;
 use chrono::Local;
 use cri::Stream;
 use file::FileLog;
@@ -14,7 +15,7 @@ const QUEUED_CHUNKS: usize = 16;
 const MAX_ERRORS: usize = 32;
 enum Message {
     Data(Stream, Vec<u8>),
-    End(Option<String>),
+    End(Stream, Option<String>),
     Reopen(u64),
 }
 #[derive(Default)]
@@ -29,7 +30,12 @@ pub(crate) struct Capture {
 }
 
 impl Capture {
-    pub(crate) fn start(mut log: Option<FileLog>, sync: bool, sources: usize) -> io::Result<Self> {
+    pub(crate) fn start(
+        mut log: Option<FileLog>,
+        mut journal: Option<journal::Journal>,
+        sync: bool,
+        sources: usize,
+    ) -> io::Result<Self> {
         let (sender, incoming) = mpsc::sync_channel(QUEUED_CHUNKS);
         let (done, report) = mpsc::sync_channel(1);
         let (output, live) = mpsc::sync_channel(QUEUED_CHUNKS);
@@ -49,6 +55,12 @@ impl Capture {
                                         .err()
                                 })
                                 .map(|e| e.to_string());
+                            if let Some(journal) = &mut journal
+                                && let Err(error) = journal.write_chunk(stream, &bytes)
+                                && report.errors.len() < MAX_ERRORS
+                            {
+                                report.errors.push(format!("journal write: {error}"));
+                            }
                             if output.send((stream, bytes)).is_err() {
                                 break;
                             }
@@ -64,7 +76,15 @@ impl Capture {
                             let _ = controls.send((id, result));
                             error
                         }
-                        Ok(Message::End(error)) => {
+                        Ok(Message::End(stream, error)) => {
+                            if let Some(journal) = &mut journal
+                                && let Err(error) = journal.end(stream)
+                                && report.errors.len() < MAX_ERRORS
+                            {
+                                report
+                                    .errors
+                                    .push(format!("journal final partial: {error}"));
+                            }
                             ended += 1;
                             error
                         }
@@ -131,7 +151,7 @@ impl Capture {
                         Err(error) => break Some(format!("capture read: {error}")),
                     }
                 };
-                let _ = sender.send(Message::End(error));
+                let _ = sender.send(Message::End(stream, error));
             })?;
         Ok(())
     }

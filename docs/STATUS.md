@@ -148,3 +148,20 @@ failure, syncs retired files unless opted out, and syncs the held directory at
 finalization on Unix. New tests check record continuity across explicit reopen,
 failed-rotation preservation, and Windows hard-link rejection. Native verification
 of these latest logging changes is pending.
+
+Native logging qualification passed at `396f93b`:
+[run 42106841597](https://github.com/pichi-vm/madrillo/actions/runs/42106841597).
+The cumulative file cap now includes pre-existing active-file bytes, matching
+conmon's initialization (with a focused regression test).
+
+Journald is implemented using systemd's documented native datagram/memfd
+protocol, without a C-library dependency or lossy UTF-8 conversion. It supports
+conmon-compatible identity/name/tag/label fields, priorities and priority
+prefixes, bounded partial lines and the partial-marker opt-out. File+journal,
+none/off/null and native passthrough are selectable. Metadata and record sizes
+are bounded. Real local journald differential tests against the pinned conmon
+binary passed for binary data, complete/partial lines, priority prefixes split
+across reads, labels/tags and combined file output. The same test is in Linux CI;
+other hosts reject journald explicitly. The memfd fallback is implemented but
+has not yet been independently exercised. Full logging failure injection and
+path-allowlist coverage remain pending.

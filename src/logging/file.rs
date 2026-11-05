@@ -49,7 +49,7 @@ impl FileLog {
             file,
             limits,
             size,
-            total: 0,
+            total: size,
             synchronize,
         })
     }

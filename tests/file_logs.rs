@@ -140,3 +140,25 @@ fn hard_links_are_rejected_on_windows() -> Result<(), Box<dyn std::error::Error>
     assert_eq!(fs::read(target)?, b"preserved");
     Ok(())
 }
+
+#[test]
+fn global_cap_counts_bytes_already_in_the_active_file() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("log");
+    fs::write(&path, b"existing contents")?;
+    let mut log = FileLog::open(
+        &path,
+        Limits {
+            total: Some(1),
+            ..Limits::default()
+        },
+        true,
+    )?;
+    log.write_chunk(
+        DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?,
+        Stream::Stdout,
+        b"not retained\n",
+    )?;
+    assert_eq!(fs::read(&path)?, b"existing contents");
+    Ok(())
+}

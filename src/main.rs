@@ -65,9 +65,20 @@ struct Cli {
     /// Initial terminal size, ROWSxCOLS.
     #[arg(long, default_value = "24x80", value_parser = parse_size)]
     size: (u16, u16),
-    /// CRI file path, 'none', or 'passthrough'. Defaults to STATE_DIR/console.log.
+    /// File path, k8s-file:PATH, journald, none, or passthrough. Repeat for file+journal.
     #[arg(long)]
-    log_path: Option<OsString>,
+    log_path: Vec<OsString>,
+    /// Workload ID for conmon-compatible journal metadata.
+    #[arg(long)]
+    log_id: Option<String>,
+    #[arg(long)]
+    log_name: Option<String>,
+    #[arg(long)]
+    log_tag: Option<String>,
+    #[arg(long)]
+    log_label: Vec<String>,
+    #[arg(long)]
+    no_container_partial_message: bool,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     log_size_max: Option<u64>,
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
@@ -114,6 +125,29 @@ fn parse_size(value: &str) -> Result<(u16, u16), String> {
         return Err("terminal dimensions must be nonzero".into());
     }
     Ok((rows, cols))
+}
+
+fn log_file_path(value: &std::ffi::OsStr) -> io::Result<PathBuf> {
+    if value.is_empty() {
+        return Err(io::Error::other("log path must not be empty"));
+    }
+    if !value.as_encoded_bytes().starts_with(b"k8s-file:") {
+        return Ok(PathBuf::from(value));
+    }
+    #[cfg(unix)]
+    let path = {
+        use std::os::unix::ffi::{OsStrExt, OsStringExt};
+        OsString::from_vec(value.as_bytes()[9..].to_vec())
+    };
+    #[cfg(windows)]
+    let path = {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        OsString::from_wide(&value.encode_wide().skip(9).collect::<Vec<_>>())
+    };
+    if path.is_empty() {
+        return Err(io::Error::other("k8s-file needs a path"));
+    }
+    Ok(PathBuf::from(path))
 }
 
 fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
@@ -195,8 +229,45 @@ fn supervise(
         signal_hook::consts::SIGQUIT,
     ])?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
-    let passthrough = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("passthrough"));
-    let no_log = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("none"));
+    let mut path = cli
+        .log_path
+        .is_empty()
+        .then(|| directory.join("console.log"));
+    let mut use_journal = false;
+    let mut passthrough = false;
+    for value in &cli.log_path {
+        match value.to_str() {
+            Some("none" | "off" | "null") => {}
+            Some("passthrough") => passthrough = true,
+            Some("journald") => use_journal = true,
+            _ => path = Some(log_file_path(value)?),
+        }
+    }
+    if passthrough && (path.is_some() || use_journal) {
+        return Err("passthrough cannot be combined with captured logging".into());
+    }
+    if !use_journal
+        && (cli.log_id.is_some()
+            || cli.log_name.is_some()
+            || cli.log_tag.is_some()
+            || !cli.log_label.is_empty()
+            || cli.no_container_partial_message)
+    {
+        return Err("journal metadata options require --log-path journald".into());
+    }
+    let journal = if use_journal {
+        Some(logging::journal::Journal::open(
+            logging::journal::Metadata {
+                id: cli.log_id.as_deref().ok_or("journald requires --log-id")?,
+                name: cli.log_name.as_deref(),
+                tag: cli.log_tag.as_deref(),
+                labels: &cli.log_label,
+                no_partial: cli.no_container_partial_message,
+            },
+        )?)
+    } else {
+        None
+    };
     if cli.terminal && passthrough {
         return Err("terminal capture cannot use passthrough logging".into());
     }
@@ -204,14 +275,7 @@ fn supervise(
         .terminal
         .then(|| terminal::Terminal::open(cli.size.0, cli.size.1))
         .transpose()?;
-    let log = if passthrough || no_log {
-        None
-    } else {
-        let path = cli
-            .log_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| directory.join("console.log"));
+    let log = if let Some(path) = path {
         Some(FileLog::open(
             &path,
             Limits {
@@ -221,6 +285,8 @@ fn supervise(
             },
             !cli.no_sync_log,
         )?)
+    } else {
+        None
     };
     #[cfg(target_os = "linux")]
     let group = cli
@@ -293,7 +359,7 @@ fn supervise(
     } else {
         2
     };
-    let capture = Capture::start(log, !cli.no_sync_log, sources)?;
+    let capture = Capture::start(log, journal, !cli.no_sync_log, sources)?;
     let mut child = Workload::spawn(
         command,
         terminal.as_mut(),

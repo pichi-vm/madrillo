@@ -184,3 +184,41 @@ fn terminal_leader_exit_terminates_descendants() -> Result<(), Box<dyn std::erro
     assert_eq!(fs::read(heartbeat)?, before);
     Ok(())
 }
+
+#[test]
+fn disabled_and_passthrough_log_drivers_preserve_native_execution()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let result = run(root.path(), "emit", &["--log-path", "none"], &[])?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+    assert!(!root.path().join("state/console.log").exists());
+    let root = tempfile::tempdir()?;
+    let mut child = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+        .arg("--state-dir")
+        .arg(root.path().join("state"))
+        .args(["--log-path", "passthrough", "--"])
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("emit")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            assert!(status.success());
+            break;
+        }
+        if Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Err("passthrough deadline".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let output = child.wait_with_output()?;
+    assert_eq!(output.stdout, b"first\n\npartial\0\xff");
+    assert_eq!(output.stderr, b"diagnostic\n");
+    assert!(!root.path().join("state/console.log").exists());
+    Ok(())
+}

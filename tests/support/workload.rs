@@ -51,6 +51,15 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             io::stderr().write_all(b"diagnostic\n")?;
             Ok(37)
         }
+        Some("journal-emit") => {
+            io::stdout().write_all(b"<4>priority\n<9>literal\nsplit-")?;
+            io::stdout().flush()?;
+            std::thread::sleep(Duration::from_millis(40));
+            io::stdout().write_all(b"<2>tail\nbinary\0\xff")?;
+            io::stdout().flush()?;
+            io::stderr().write_all(b"diagnostic\n")?;
+            Ok(37)
+        }
         Some("sleep") => {
             std::thread::sleep(Duration::from_secs(20));
             Ok(0)
@@ -203,7 +212,7 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 .ok_or("conmon omitted --pid-file")?;
             let path = args.get(index + 1).ok_or("conmon omitted pid path")?;
             let mut command = Command::new(std::env::current_exe()?);
-            command.arg("emit");
+            command.arg(std::env::var_os("MADRILLO_FIXTURE_MODE").unwrap_or_else(|| "emit".into()));
             #[cfg(unix)]
             {
                 use std::os::unix::process::CommandExt;
