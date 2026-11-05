@@ -43,6 +43,11 @@ name = "terminal_exec"
 path = "examples/terminal_exec.rs"
 required-features = ["qualification"]
 
+[[example]]
+name = "pipe_liveness"
+path = "examples/pipe_liveness.rs"
+required-features = ["qualification"]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"], optional = true }

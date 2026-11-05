@@ -292,3 +292,20 @@ The callback test uses an unconditional marker command so a missing result
 cannot make an incorrectly invoked callback look uninvoked. Local qualification
 passed inside a private user/mount namespace; no host disk was filled. The same
 check is added to Linux CI. Other-host storage fault injection remains pending.
+
+Native Windows pipe ACL qualification passed at `f9ba357`, and native log
+allowlist qualification passed on all hosts at `b8988ff`:
+[run 42113030898](https://github.com/pichi-vm/madrillo/actions/runs/42113030898),
+[run 42113359838](https://github.com/pichi-vm/madrillo/actions/runs/42113359838).
+
+At `4a620b8`, Linux and Windows native tests passed, including Linux storage
+faults and Windows non-Unicode argv/environment/cwd through ConPTY. macOS rejected
+the invalid-byte directory name with EILSEQ before madrillo ran. The native test
+now keeps that exact OS rejection path and uses a valid Unicode cwd on that
+filesystem; non-Unicode argv/environment remain required and are not skipped.
+Other creation errors still fail the test. Native rerun is pending.
+
+A native pipe-liveness experiment now fills input before closing the sole
+writer. Local Linux proves POLLHUP without consuming the 8192 queued bytes.
+The Windows experiment will report PeekNamedPipe's behavior with unread data;
+its observation is not a claim that dillo monitor-loss integration is complete.

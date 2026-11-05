@@ -342,7 +342,18 @@ fn native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes()
         let root = tempfile::tempdir()?;
         let state = root.path().join("state");
         let cwd = root.path().join(&native);
-        fs::create_dir(&cwd)?;
+        let cwd = match fs::create_dir(&cwd) {
+            Ok(()) => cwd,
+            #[cfg(target_os = "macos")]
+            Err(error) if error.raw_os_error() == Some(nix::libc::EILSEQ) => {
+                // APFS rejects this filename before the monitor is launched.
+                // Still exercise raw argv/environment and a native Unicode cwd.
+                let cwd = root.path().join("native café working directory");
+                fs::create_dir(&cwd)?;
+                cwd
+            }
+            Err(error) => return Err(error.into()),
+        };
         fs::write(cwd.join("cwd-marker"), b"correct working directory")?;
         let report = root.path().join("native.json");
         let arguments = [

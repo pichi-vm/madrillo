@@ -31,6 +31,8 @@ jobs:
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Current tests (coverage remains pending)
         run: cargo test --locked --all-features
+      - name: Observe console loss with unread input
+        run: cargo run --locked --features qualification --example pipe_liveness
       - name: Unix inherited pipe qualification
         if: runner.os != 'Windows'
         run: cargo run --locked --features qualification --example inherited_pipe
