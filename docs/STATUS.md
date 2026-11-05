@@ -322,3 +322,30 @@ numeric exit values and OOM evidence, in pipe and PTY modes. Windows adds full
 32-bit exit values (including 259/STILL_ACTIVE and high-bit values) in pipe and
 ConPTY modes. Local Unix execution and Windows cross-clippy passed; native
 Windows verification is pending.
+
+Native qualification at `dd2e18a` passed on Linux, macOS and Windows, including
+Unix signal/native-result separation and Windows 259/high-bit exit values:
+[run 42116263975](https://github.com/pichi-vm/madrillo/actions/runs/42116263975).
+The macOS non-Unicode-context correction also passed. Full conformance streak
+remains zero.
+
+At `3ef2951`, macOS and Linux reported POLLHUP with unread input. Windows still
+returned the old server PID/session after close while 65536 bytes remained
+buffered: [run 42115778798](https://github.com/pichi-vm/madrillo/actions/runs/42115778798).
+Thus these Windows metadata queries do not solve full-buffer console loss.
+Microsoft documents a native closing state even with unread pipe data; that
+lower-level dillo-side mechanism needs qualification. No liveness protocol was
+added. An isolated dillo worktree is prepared; no dillo source has changed.
+
+Named extra captures now use `--capture NAME RESOURCE`, own a nonblocking pipe
+read end, publish the selected stream name live, and write a separate raw log.
+They share the bounded logging queue and existing rotation/sync/path controls,
+without introducing CRI tokens or parsing the child's data. Cancellation joins
+extra readers before final publication/callback even if the external writer
+stays open. Windows rejects overlapped capture handles explicitly and uses safe
+winx mode queries (already a transitive dependency) to validate synchronous I/O.
+Local binary/PTY capture, exact raw caps/rotation, live Unix selection combined
+with unchanged inherited workload arguments, invalid-resource rejection and
+open-writer cancellation passed. All local tests and Windows cross-clippy
+passed. Native Windows/macOS qualification is pending; C10 remains incomplete
+because exact Windows workload inheritance is not implemented.

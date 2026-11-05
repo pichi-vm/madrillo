@@ -577,6 +577,7 @@ dependencies = [
  "widestring",
  "win-custody",
  "windows-spawn",
+ "winx",
 ]
 
 [[package]]

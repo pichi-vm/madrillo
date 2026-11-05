@@ -166,18 +166,55 @@ impl FileLog {
                 .try_reserve(line.len().saturating_add(64))
                 .map_err(|_| io::Error::other("log record allocation failed"))?;
             Cri::new(&mut record).write_chunk(time, stream, line)?;
-            let length = u64::try_from(record.len()).map_err(io::Error::other)?;
-            if self
-                .limits
-                .size
-                .is_some_and(|limit| self.size.saturating_add(length) > limit)
-            {
+            self.write_record(&record)?;
+        }
+        Ok(())
+    }
+
+    /// Opaque streams use raw bytes, never invented CRI stream names.
+    pub(crate) fn write_raw(&mut self, mut bytes: &[u8]) -> io::Result<()> {
+        if self.limits.size == Some(0) {
+            return Err(io::Error::other("raw log size limit must be nonzero"));
+        }
+        while !bytes.is_empty() {
+            if self.limits.total.is_some_and(|limit| self.total >= limit) {
+                break;
+            }
+            if self.limits.size.is_some_and(|limit| self.size >= limit) {
                 self.reopen()?;
             }
-            self.file.write_all(&record)?;
-            self.size = self.size.saturating_add(length);
-            self.total = self.total.saturating_add(length);
+            let mut keep = bytes.len();
+            for remaining in [
+                self.limits
+                    .size
+                    .map(|limit| limit.saturating_sub(self.size)),
+                self.limits
+                    .total
+                    .map(|limit| limit.saturating_sub(self.total)),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                keep = keep.min(usize::try_from(remaining).unwrap_or(usize::MAX));
+            }
+            self.write_record(&bytes[..keep])?;
+            bytes = &bytes[keep..];
         }
+        Ok(())
+    }
+
+    fn write_record(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let length = u64::try_from(bytes.len()).map_err(io::Error::other)?;
+        if self
+            .limits
+            .size
+            .is_some_and(|limit| self.size.saturating_add(length) > limit)
+        {
+            self.reopen()?;
+        }
+        self.file.write_all(bytes)?;
+        self.size = self.size.saturating_add(length);
+        self.total = self.total.saturating_add(length);
         Ok(())
     }
 

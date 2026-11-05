@@ -65,6 +65,9 @@ struct Cli {
     /// Pass this inherited descriptor to the workload at the same number (Unix).
     #[arg(long)]
     inherit: Vec<usize>,
+    /// Capture an inherited read pipe as NAME; raw history is stream-NAME.log.
+    #[arg(long, num_args = 2, value_names = ["NAME", "RESOURCE"])]
+    capture: Vec<String>,
     /// Transfer systemd activation sockets even when LISTEN_PID names the caller.
     #[arg(long)]
     replace_listen_pid: bool,
@@ -186,6 +189,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     // Adopt before opening state, endpoints, logs or any worker resources.
+    let capture_specs = logging::extra::Spec::parse(&cli.capture)?;
     #[cfg(windows)]
     if !cli.inherit.is_empty() {
         return Err("exact extra-handle inheritance is not yet supported on Windows".into());
@@ -205,6 +209,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .chain(&cli.hold)
         .chain(&inherited_numbers)
         .copied()
+        .chain(capture_specs.iter().map(|spec| spec.number))
         .collect();
     let mut held = resources::adopt(&numbers)?;
     let initial = cli
@@ -212,6 +217,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .and_then(|number| held.remove(&number))
         .map(resources::control)
         .transpose()?;
+    let extra = capture_specs
+        .into_iter()
+        .map(|spec| {
+            let resource = held
+                .remove(&spec.number)
+                .ok_or_else(|| io::Error::other("capture resource disappeared"))?;
+            Ok((spec.name, logging::extra::Reader::new(resource)?))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     #[cfg(unix)]
     let inherited = inherited_numbers
         .iter()
@@ -239,7 +253,10 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .listen
         .clone()
         .unwrap_or_else(|| PathBuf::from(format!(r"\\.\pipe\madrillo-{}", std::process::id())));
-    let mut connections = Connections::bind(Some(&endpoint))?;
+    let mut connections = Connections::bind(
+        Some(&endpoint),
+        extra.iter().map(|(name, _)| name.clone()).collect(),
+    )?;
     if let Some(initial) = initial {
         connections.initial(initial, cli.stdin)?;
     }
@@ -264,6 +281,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         &mut connections,
         &mut result,
         activation.as_ref(),
+        extra,
         #[cfg(unix)]
         original_oom_score,
         #[cfg(unix)]
@@ -361,6 +379,7 @@ fn supervise(
     connections: &mut Connections,
     result: &mut Completion,
     activation: Option<&activation::Activation>,
+    extra: Vec<(String, logging::extra::Reader)>,
     #[cfg(unix)] original_oom_score: Option<i32>,
     #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -437,6 +456,22 @@ fn supervise(
     } else {
         None
     };
+    let extra_logs = extra
+        .iter()
+        .map(|(name, _)| {
+            let log = FileLog::open(
+                &directory.join(format!("stream-{name}.log")),
+                Limits {
+                    size: cli.log_size_max,
+                    total: cli.log_global_size_max,
+                    backups: cli.log_rotate.then_some(cli.log_max_files),
+                },
+                !cli.no_sync_log,
+                &cli.log_allowlist_dir,
+            )?;
+            Ok((name.clone(), log))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     #[cfg(target_os = "linux")]
     let group = cli
         .cgroup
@@ -513,14 +548,15 @@ fn supervise(
         result.exited_at_unix_ms = unix_ms();
         return Ok(());
     }
-    let sources = if passthrough {
-        0
-    } else if cli.terminal {
-        1
-    } else {
-        2
-    };
-    let capture = Capture::start(log, journal, !cli.no_sync_log, sources)?;
+    let sources = extra.len()
+        + if passthrough {
+            0
+        } else if cli.terminal {
+            1
+        } else {
+            2
+        };
+    let mut capture = Capture::start(log, journal, !cli.no_sync_log, sources, extra_logs)?;
     let mut child = Workload::spawn(
         command,
         terminal.as_mut(),
@@ -533,6 +569,9 @@ fn supervise(
     let started = Instant::now();
     // Keep the sole console writer alive with zero clients.
     let workers = (|| -> io::Result<()> {
+        for (index, (_, reader)) in extra.into_iter().enumerate() {
+            capture.read_extra(reader, index)?;
+        }
         connections
             .broadcast(ServerMessage::Started {
                 leader_pid: child.id(),
@@ -619,7 +658,7 @@ fn supervise(
         match capture.done.try_recv() {
             Ok(report) => {
                 while let Ok((stream, bytes)) = capture.output.try_recv() {
-                    connections.output(stream.name(), bytes)?;
+                    connections.output(&stream, bytes)?;
                 }
                 result.log_errors.extend(report.errors);
                 break;
@@ -745,7 +784,7 @@ fn service(
     }
     for _ in 0..16 {
         match capture.output.try_recv() {
-            Ok((stream, bytes)) => connections.output(stream.name(), bytes)?,
+            Ok((stream, bytes)) => connections.output(&stream, bytes)?,
             Err(_) => break,
         }
     }

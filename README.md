@@ -10,3 +10,14 @@ claimed yet.
 Madrillo is one Rust package: a minimal shared-types library and a complete
 monitor executable. All owned Rust targets forbid unsafe code. Pichi and dillo
 are the first integration, while the monitor remains independent of VM APIs.
+
+`--capture NAME RESOURCE` transfers an inherited pipe read end to the monitor.
+It records raw bytes in `STATE/stream-NAME.log`; clients can select `NAME` in
+their attachment. The caller separately passes the write end to the workload
+(Unix `--inherit NUMBER`) using the workload's own arguments. No contents or
+arguments are interpreted. Captures are explicit additional logs even with
+`--log-path none`; size/rotation/sync and allowlist options apply to them too.
+Their byte limits are exact; stdout/stderr retain conmon's whole-record CRI
+behavior. Capture resources count toward the 64-resource bound and must have
+exclusive read ownership. Windows currently accepts synchronous pipe read
+handles; exact workload inheritance on Windows remains unfinished.

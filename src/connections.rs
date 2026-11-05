@@ -24,6 +24,7 @@ pub(crate) struct Connections {
     clients: Vec<Client>,
     next_id: u64,
     owner: Option<u64>,
+    extra_streams: Vec<String>,
 }
 
 struct Client {
@@ -225,7 +226,7 @@ impl Connections {
             .iter()
             .any(|client| client.id == 0 && !client.dead)
     }
-    pub(crate) fn bind(path: Option<&Path>) -> io::Result<Self> {
+    pub(crate) fn bind(path: Option<&Path>, extra_streams: Vec<String>) -> io::Result<Self> {
         let listener = if let Some(path) = path {
             #[cfg(unix)]
             let listener = ListenerOptions::new()
@@ -255,6 +256,7 @@ impl Connections {
             clients: Vec::new(),
             next_id: 1,
             owner: None,
+            extra_streams,
         })
     }
 
@@ -304,7 +306,11 @@ impl Connections {
         input: bool,
         streams: Vec<String>,
     ) -> Result<(), FrameError> {
-        if streams.len() > 2 || streams.iter().any(|s| s != "stdout" && s != "stderr") {
+        if streams.len() > 2 + self.extra_streams.len()
+            || streams
+                .iter()
+                .any(|s| s != "stdout" && s != "stderr" && !self.extra_streams.contains(s))
+        {
             return self.error(id, ErrorCode::InvalidRequest, "unknown stream");
         }
         if input && self.owner.is_some_and(|owner| owner != id) {

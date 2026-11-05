@@ -10,6 +10,32 @@ use file::{FileLog, Limits};
 use std::fs;
 
 #[test]
+fn raw_logs_rotate_on_exact_byte_limits_and_keep_no_cri_prefix()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let path = root.path().join("raw");
+    let mut log = FileLog::open(
+        &path,
+        Limits {
+            size: Some(3),
+            total: Some(8),
+            backups: Some(3),
+        },
+        true,
+        &[],
+    )?;
+    log.write_raw(b"\0\xffabcdefghi")?;
+    log.sync()?;
+    assert_eq!(fs::read(&path)?, b"ef");
+    assert_eq!(fs::read(root.path().join("raw.1"))?, b"bcd");
+    assert_eq!(fs::read(root.path().join("raw.2"))?, b"\0\xffa");
+    log.reopen()?;
+    log.write_raw(b"still capped")?;
+    assert!(fs::read(path)?.is_empty());
+    Ok(())
+}
+
+#[test]
 fn rotation_retains_whole_records_and_cumulative_cap_survives_reopen()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;

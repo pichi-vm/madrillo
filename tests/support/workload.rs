@@ -35,6 +35,11 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             std::fs::write(args.get(1).ok_or("marker missing")?, b"invoked")?;
             Ok(0)
         }
+        Some("touch-and-wait") => {
+            std::fs::write(args.get(1).ok_or("marker missing")?, b"invoked")?;
+            std::thread::sleep(Duration::from_secs(2));
+            Ok(0)
+        }
         Some("context-probe") => {
             fn bytes(value: &std::ffi::OsStr) -> Vec<u8> {
                 #[cfg(unix)]
