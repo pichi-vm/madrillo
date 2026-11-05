@@ -55,7 +55,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libglib2.0-dev libsystemd-dev
+          sudo apt-get install -y --no-install-recommends libglib2.0-dev libsystemd-dev strace
           python3 tools/build_conmon.py .qualification/reference
       - name: Differential conmon log and exit fixtures
         if: runner.os == 'Linux'
@@ -63,6 +63,9 @@ jobs:
       - name: Differential native journal and combined file fixtures
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_journal.py .qualification/reference/oracle.json target/debug/madrillo target/debug/madrillo-fixture
+      - name: Isolated full disk and synchronization/publication faults
+        if: runner.os == 'Linux'
+        run: sudo unshare --mount --propagation private python3 tools/check_storage.py target/debug/madrillo target/debug/madrillo-fixture
       - name: State completion status
         shell: bash
         run: echo 'These checks do not constitute a full C01-C30 conformance pass.'

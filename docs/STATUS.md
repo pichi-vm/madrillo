@@ -282,3 +282,13 @@ arguments, trailing backslashes and embedded quotes through both pipe and host
 terminal launch. The fixture writes raw native encodings to a file, avoiding
 terminal text normalization as an accidental oracle. Local Unix execution and
 Windows cross-clippy passed; macOS/Windows native execution is pending.
+
+Linux storage-fault qualification now exercises actual fsync EIO injection
+(scoped by strace to the exact owned log path), the --no-sync-log opt-out, a
+64KiB tmpfs filling during a detached flood with a live monitor deadline, and
+failed retained-result publication on that full filesystem. Publication failure
+must produce neither a final Completed frame nor an exit-command invocation.
+The callback test uses an unconditional marker command so a missing result
+cannot make an incorrectly invoked callback look uninvoked. Local qualification
+passed inside a private user/mount namespace; no host disk was filled. The same
+check is added to Linux CI. Other-host storage fault injection remains pending.

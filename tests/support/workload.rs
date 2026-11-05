@@ -20,6 +20,10 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        Some("touch") => {
+            std::fs::write(args.get(1).ok_or("marker missing")?, b"invoked")?;
+            Ok(0)
+        }
         Some("context-probe") => {
             fn bytes(value: &std::ffi::OsStr) -> Vec<u8> {
                 #[cfg(unix)]
