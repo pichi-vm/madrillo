@@ -9,7 +9,7 @@ description = "A native process monitor inspired by conmon"
 
 [features]
 default = []
-cli = ["dep:clap", "dep:serde_json", "dep:thiserror"]
+cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix"]
 qualification = ["cli", "dep:filedescriptor", "dep:portable-pty", "dep:process-wrap", "dep:command-fds", "dep:nix", "dep:rustix"]
 
 [lib]
@@ -19,6 +19,15 @@ path = "src/lib.rs"
 name = "madrillo"
 path = "src/main.rs"
 required-features = ["cli"]
+
+[[bin]]
+name = "madrillo-fixture"
+path = "tests/support/workload.rs"
+required-features = ["qualification"]
+
+[[test]]
+name = "core"
+required-features = ["qualification"]
 
 [[example]]
 name = "inherited_pipe"
@@ -35,6 +44,10 @@ serde = { version = "1", features = ["derive"] }
 clap = { version = "4", features = ["derive"], optional = true }
 serde_json = { version = "1", optional = true }
 thiserror = { version = "2", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"], optional = true }
+tempfile = { version = "3", optional = true }
+cap-std = { version = "=4.0.3", optional = true }
+cap-fs-ext = { version = "=4.0.3", optional = true }
 filedescriptor = { version = "=0.8.3", optional = true }
 portable-pty = { version = "=0.9.0", optional = true }
 process-wrap = { version = "=10.0.1", features = ["std"], optional = true }
@@ -46,6 +59,7 @@ rustix = { version = "=1.1.6", features = ["process", "termios"], optional = tru
 
 [dev-dependencies]
 serde_json = "1"
+tempfile = "3"
 
 [lints.rust]
 unsafe_code = "forbid"
