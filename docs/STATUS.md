@@ -316,3 +316,9 @@ appeared only after draining them. Thus peeking alone does not satisfy full-buff
 monitor-loss detection. The experiment is extended to query the pipe's server
 process/session metadata without consuming data; native observation is pending.
 No new heartbeat/liveness channel or child API proxy has been introduced.
+
+Exit-result qualification now tests Unix SIGKILL/SIGTERM separately from
+numeric exit values and OOM evidence, in pipe and PTY modes. Windows adds full
+32-bit exit values (including 259/STILL_ACTIVE and high-bit values) in pipe and
+ConPTY modes. Local Unix execution and Windows cross-clippy passed; native
+Windows verification is pending.

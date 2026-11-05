@@ -407,3 +407,56 @@ fn native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes()
     }
     Ok(())
 }
+
+#[cfg(windows)]
+#[test]
+fn full_windows_exit_bits_survive_pipe_and_terminal_supervision()
+-> Result<(), Box<dyn std::error::Error>> {
+    for flags in [&[][..], &["--terminal"][..]] {
+        for code in [259_u32, 0xffff_ffff_u32, 0xc000_0005_u32, 0x8000_0000_u32] {
+            let root = tempfile::tempdir()?;
+            let argument = (code as i32).to_string();
+            let result = run(root.path(), "exit", flags, &[OsStr::new(&argument)])?;
+            assert_eq!(result.leader, LeaderResult::Exit { code });
+            assert_eq!(result.cause, CompletionCause::LeaderExit);
+            assert!(result.exited_at_unix_ms > 0);
+            assert!(!matches!(
+                result.oom,
+                madrillo::OomEvidence::Observed { .. }
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn native_signals_are_distinct_from_numeric_exit_codes_and_oom()
+-> Result<(), Box<dyn std::error::Error>> {
+    for flags in [&[][..], &["--terminal"][..]] {
+        for signal in [9, 15] {
+            let root = tempfile::tempdir()?;
+            let argument = signal.to_string();
+            let result = run(
+                root.path(),
+                "exit-by-signal",
+                flags,
+                &[OsStr::new(&argument)],
+            )?;
+            assert_eq!(
+                result.leader,
+                LeaderResult::Signal {
+                    signal,
+                    core_dumped: false
+                }
+            );
+            assert_eq!(result.cause, CompletionCause::LeaderExit);
+            assert!(result.exited_at_unix_ms > 0);
+            assert!(!matches!(
+                result.oom,
+                madrillo::OomEvidence::Observed { .. }
+            ));
+        }
+    }
+    Ok(())
+}

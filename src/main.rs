@@ -50,7 +50,7 @@ struct Cli {
     /// New private directory for this workload's retained state.
     #[arg(long, required_unless_present = "api_version")]
     state_dir: Option<PathBuf>,
-    /// Working directory for the child; environment is inherited unchanged.
+    /// Working directory for the child.
     #[arg(long)]
     cwd: Option<PathBuf>,
     /// Private Unix socket or Windows named-pipe endpoint for live attachment.

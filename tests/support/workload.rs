@@ -20,6 +20,17 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        #[cfg(unix)]
+        Some("exit-by-signal") => {
+            let signal = args
+                .get(1)
+                .ok_or("signal missing")?
+                .to_str()
+                .ok_or("invalid signal")?
+                .parse::<i32>()?;
+            nix::sys::signal::raise(nix::sys::signal::Signal::try_from(signal)?)?;
+            Err("termination signal unexpectedly returned".into())
+        }
         Some("touch") => {
             std::fs::write(args.get(1).ok_or("marker missing")?, b"invoked")?;
             Ok(0)
