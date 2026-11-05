@@ -45,7 +45,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg(windows)]
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use interprocess::os::windows::named_pipe::{PipeListenerOptions, pipe_mode::Bytes};
+    use interprocess::os::windows::named_pipe::{
+        PipeListenerOptions, RecvPipeStream, pipe_mode::Bytes,
+    };
+    use std::os::windows::io::OwnedHandle;
     use system_interface::io::IoExt;
     let path_text = format!(r"\\.\pipe\madrillo-liveness-{}", std::process::id());
     let path = widestring::U16CString::from_str(&path_text)?;
@@ -55,6 +58,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .output_buffer_size_hint(64 * 1024)
         .create_send_only::<Bytes>()?;
     let reader = std::fs::OpenOptions::new().read(true).open(&path_text)?;
+    let handle: OwnedHandle = reader.try_clone()?.into();
+    // Metadata queries only; all synchronous data I/O stays on the std File.
+    let metadata = RecvPipeStream::<Bytes>::try_from(handle)
+        .map_err(|error| io::Error::other(error.to_string()))?;
+    assert_eq!(metadata.server_process_id()?, std::process::id());
     let mut writer = listener.accept()?;
     let mut filled = 0;
     for _ in 0..256 {
@@ -73,6 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let after_close = reader.peek(&mut [0; 1]);
     println!(
         "Windows console loss: {filled} unread bytes; PeekNamedPipe immediately after server close: {after_close:?}"
+    );
+    println!(
+        "Windows console loss: server_process_id after close: {:?}; server_session_id: {:?}",
+        metadata.server_process_id(),
+        metadata.server_session_id()
     );
     let mut received = 0;
     loop {

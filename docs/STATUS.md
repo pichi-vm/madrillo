@@ -309,3 +309,10 @@ A native pipe-liveness experiment now fills input before closing the sole
 writer. Local Linux proves POLLHUP without consuming the 8192 queued bytes.
 The Windows experiment will report PeekNamedPipe's behavior with unread data;
 its observation is not a claim that dillo monitor-loss integration is complete.
+
+The Windows experiment at `b621372` observed PeekNamedPipe returning queued
+input after the server closed: 65536 bytes remained readable, and BrokenPipe
+appeared only after draining them. Thus peeking alone does not satisfy full-buffer
+monitor-loss detection. The experiment is extended to query the pipe's server
+process/session metadata without consuming data; native observation is pending.
+No new heartbeat/liveness channel or child API proxy has been introduced.
