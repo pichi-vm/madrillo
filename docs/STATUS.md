@@ -446,3 +446,29 @@ native host qualification and the complete terminal contract are still pending.
 Publishing madrillo (currently private) is awaiting user approval so pichi CI
 can fetch the types-only dependency without an existing cross-repository token.
 The full conformance streak remains zero.
+
+
+Dillo PR 92 is now ready for review: all source and merge-run checks at
+`61b47fa5` are green, including Linux ARM64. The PR was promoted from draft;
+it has not been merged. Madrillo qualification at `58be66c9` also passes all
+three native hosts ([run 42127125520](https://github.com/pichi-vm/madrillo/actions/runs/42127125520)).
+The macOS switched-account probe now reaches the public socket and verifies
+peer rejection. These remain qualification checks, not full conformance passes.
+
+Pichi's launch/identity foundation now has local CLI tests for binary stdin,
+native exit 37, detached launch, discovery and subsequent retained exit 23.
+Its unit/run/rmi/workload checks pass locally, as does the explicitly invoked
+native launch/control test. New Rust paths compile for Windows MSVC in the
+isolated probe; this does not qualify the full pichi binary or native Windows
+execution. Strict workspace Clippy encountered existing registry/storage
+warnings; the normal no-deps Clippy run completes and reports no warnings in
+the new workload modules/tests.
+
+Workload identity and console state now live in the canonical image cache's
+private sibling directory (append `.workloads`), so the build guest's read-only
+cache mount does not expose them. Unix reconnect sockets use short `/tmp` names
+with both peers checking kernel UID credentials; Windows clients check pipe
+ownership. The original preconnected channel remains a transferred capability.
+Native client checks, full build integration, stop/logs and signal/resize remain
+unfinished. Pichi's changes are local while repository visibility/CI access is
+awaiting the user's answer; the full conformance streak remains zero.
