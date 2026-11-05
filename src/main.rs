@@ -83,6 +83,9 @@ struct Cli {
     /// File path, k8s-file:PATH, journald, none, or passthrough. Repeat for file+journal.
     #[arg(long)]
     log_path: Vec<OsString>,
+    /// Permit file logs only below one of these existing directories; repeatable.
+    #[arg(long)]
+    log_allowlist_dir: Vec<PathBuf>,
     /// Workload ID for conmon-compatible journal metadata.
     #[arg(long)]
     log_id: Option<String>,
@@ -429,6 +432,7 @@ fn supervise(
                 backups: cli.log_rotate.then_some(cli.log_max_files),
             },
             !cli.no_sync_log,
+            &cli.log_allowlist_dir,
         )?)
     } else {
         None

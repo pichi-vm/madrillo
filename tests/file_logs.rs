@@ -23,6 +23,7 @@ fn rotation_retains_whole_records_and_cumulative_cap_survives_reopen()
             backups: Some(2),
         },
         true,
+        &[],
     )?;
     // Each record is 49 bytes. The cumulative cap is checked before a record,
     // so the third record takes total written bytes past 100; the fourth drops.
@@ -50,6 +51,7 @@ fn oversized_records_are_whole_and_truncation_replaces_inode()
             ..Limits::default()
         },
         true,
+        &[],
     )?;
     log.write_chunk(time, Stream::Stdout, b"first\nsecond\n")?;
     let content = fs::read_to_string(path)?;
@@ -65,7 +67,7 @@ fn an_existing_log_is_appended_to() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let path = root.path().join("log");
     fs::write(&path, b"existing\n")?;
-    let mut log = FileLog::open(&path, Limits::default(), true)?;
+    let mut log = FileLog::open(&path, Limits::default(), true, &[])?;
     log.write_chunk(
         DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?,
         Stream::Stdout,
@@ -86,16 +88,16 @@ fn special_files_and_links_are_rejected_without_modifying_targets()
     fs::write(&target, b"preserved")?;
     let link = root.path().join("link");
     symlink(&target, &link)?;
-    assert!(FileLog::open(&link, Limits::default(), true).is_err());
+    assert!(FileLog::open(&link, Limits::default(), true, &[]).is_err());
     let hard = root.path().join("hard");
     fs::hard_link(&target, &hard)?;
-    assert!(FileLog::open(&hard, Limits::default(), true).is_err());
+    assert!(FileLog::open(&hard, Limits::default(), true, &[]).is_err());
     let fifo = root.path().join("fifo");
     nix::unistd::mkfifo(
         &fifo,
         nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR,
     )?;
-    let error = FileLog::open(&fifo, Limits::default(), true)
+    let error = FileLog::open(&fifo, Limits::default(), true, &[])
         .err()
         .ok_or_else(|| io::Error::other("FIFO was accepted"))?;
     assert!(error.kind() == io::ErrorKind::Other || error.raw_os_error() == Some(nix::libc::ENXIO));
@@ -115,6 +117,7 @@ fn failed_rotation_preserves_active_log_and_removes_prepared_file()
             ..Limits::default()
         },
         true,
+        &[],
     )?;
     let time = DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?;
     log.write_chunk(time, Stream::Stdout, b"before\n")?;
@@ -136,7 +139,7 @@ fn hard_links_are_rejected_on_windows() -> Result<(), Box<dyn std::error::Error>
     fs::write(&target, b"preserved")?;
     let link = root.path().join("link");
     fs::hard_link(&target, &link)?;
-    assert!(FileLog::open(&link, Limits::default(), true).is_err());
+    assert!(FileLog::open(&link, Limits::default(), true, &[]).is_err());
     assert_eq!(fs::read(target)?, b"preserved");
     Ok(())
 }
@@ -153,6 +156,7 @@ fn global_cap_counts_bytes_already_in_the_active_file() -> Result<(), Box<dyn st
             ..Limits::default()
         },
         true,
+        &[],
     )?;
     log.write_chunk(
         DateTime::parse_from_rfc3339("2026-11-05T12:00:00.123456789+00:00")?,
@@ -160,5 +164,54 @@ fn global_cap_counts_bytes_already_in_the_active_file() -> Result<(), Box<dyn st
         b"not retained\n",
     )?;
     assert_eq!(fs::read(&path)?, b"existing contents");
+    Ok(())
+}
+
+#[test]
+fn allowlist_checks_directory_boundaries_and_existing_files()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let allowed = root.path().join("allowed");
+    let sibling = root.path().join("allowed-other");
+    fs::create_dir_all(allowed.join("nested"))?;
+    fs::create_dir(&sibling)?;
+    let list = std::slice::from_ref(&allowed);
+    for path in [allowed.join("log"), allowed.join("nested/log")] {
+        FileLog::open(&path, Limits::default(), true, list)?;
+        assert!(path.exists());
+    }
+    let denied = sibling.join("log");
+    assert!(FileLog::open(&denied, Limits::default(), true, list).is_err());
+    assert!(!denied.exists());
+    fs::write(&denied, b"preserved")?;
+    assert!(FileLog::open(&denied, Limits::default(), true, list).is_err());
+    assert_eq!(fs::read(denied)?, b"preserved");
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+fn allowlist_rejects_parent_symlink_escape_and_world_writable_directory()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let root = tempfile::tempdir()?;
+    let allowed = root.path().join("allowed");
+    let outside = root.path().join("outside");
+    fs::create_dir(&allowed)?;
+    fs::create_dir(&outside)?;
+    symlink(&outside, allowed.join("escape"))?;
+    assert!(
+        FileLog::open(
+            &allowed.join("escape/log"),
+            Limits::default(),
+            true,
+            std::slice::from_ref(&allowed)
+        )
+        .is_err()
+    );
+    assert!(!outside.join("log").exists());
+    fs::set_permissions(&allowed, fs::Permissions::from_mode(0o777))?;
+    assert!(FileLog::open(&allowed.join("log"), Limits::default(), true, &[]).is_err());
+    assert!(!allowed.join("log").exists());
     Ok(())
 }

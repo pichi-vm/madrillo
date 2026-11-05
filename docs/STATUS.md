@@ -263,3 +263,16 @@ existing interprocess API applies the descriptor. A Windows native test queries
 the resulting pipe ACL and checks that its sole allowed trustee is that user.
 Cross-clippy and bare-library checks passed; native verification is pending.
 Atomic private state-directory creation on Windows remains unfinished.
+
+The conformance-gate negative tests passed in all three native jobs at `9a59fab`:
+[run 42112570294](https://github.com/pichi-vm/madrillo/actions/runs/42112570294).
+These validate rejection behavior, not a clean full-conformance round.
+
+File logs now support repeated --log-allowlist-dir. Resolution stays inside a
+held allowed-directory capability; a prefix-similar sibling or parent-symlink
+escape cannot gain access. Unix rejects world-writable or unexpectedly owned
+log directories. The check also applies to existing logs, deliberately closing
+the pinned conmon revision's existing-file bypass of its allowlist check.
+Focused tests for existing/new paths, directory boundaries, symlink escape and
+world-writable parents passed locally, as did Windows cross-clippy. Full native
+qualification is pending; Windows reparse-race fault injection remains pending.

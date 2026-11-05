@@ -8,7 +8,7 @@ use chrono::{DateTime, FixedOffset};
 use std::{
     ffi::OsString,
     io::{self, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -29,7 +29,12 @@ pub(crate) struct FileLog {
 }
 
 impl FileLog {
-    pub(crate) fn open(path: &Path, limits: Limits, synchronize: bool) -> io::Result<Self> {
+    pub(crate) fn open(
+        path: &Path,
+        limits: Limits,
+        synchronize: bool,
+        allowlist: &[PathBuf],
+    ) -> io::Result<Self> {
         let name = path
             .file_name()
             .ok_or_else(|| io::Error::other("log path needs a filename"))?
@@ -38,9 +43,25 @@ impl FileLog {
             .parent()
             .filter(|p| !p.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
-        // The selected directory is the caller's grant. All subsequent opens
-        // and renames stay relative to this held directory, even if it moves.
-        let directory = Dir::open_ambient_dir(parent, ambient_authority())?;
+        let directory = Self::directory(parent, allowlist)?;
+        #[cfg(unix)]
+        {
+            use cap_std::fs::MetadataExt;
+            let metadata = directory.dir_metadata()?;
+            if metadata.mode() & 0o002 != 0
+                || ![
+                    0,
+                    rustix::process::getuid().as_raw(),
+                    rustix::process::geteuid().as_raw(),
+                ]
+                .contains(&metadata.uid())
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "log directory has untrusted ownership or is world-writable",
+                ));
+            }
+        }
         let file = Self::open_file(&directory, &name, false)?;
         let size = file.metadata()?.len();
         Ok(Self {
@@ -52,6 +73,43 @@ impl FileLog {
             total: size,
             synchronize,
         })
+    }
+
+    fn directory(parent: &Path, allowlist: &[PathBuf]) -> io::Result<Dir> {
+        if allowlist.is_empty() {
+            return Dir::open_ambient_dir(parent, ambient_authority());
+        }
+        if allowlist.len() > 64 {
+            return Err(io::Error::other(
+                "at most 64 log allowlist directories are supported",
+            ));
+        }
+        let parent = std::fs::canonicalize(parent)?;
+        for allowed in allowlist {
+            if allowed.as_os_str().is_empty() {
+                continue;
+            }
+            let Ok(root) = Dir::open_ambient_dir(allowed, ambient_authority()) else {
+                continue;
+            };
+            let Ok(canonical) = std::fs::canonicalize(allowed) else {
+                continue;
+            };
+            let Ok(relative) = parent.strip_prefix(canonical) else {
+                continue;
+            };
+            // Resolution is rooted in the granted directory capability. A
+            // rename/symlink race cannot redirect this open outside that grant.
+            return root.open_dir(if relative.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                relative
+            });
+        }
+        Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "log directory is outside the allowlist",
+        ))
     }
 
     fn open_file(directory: &Dir, name: &OsString, new: bool) -> io::Result<File> {
