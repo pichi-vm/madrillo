@@ -272,6 +272,13 @@ impl Connections {
             // Bound accepts per iteration so a flood cannot starve deadlines.
             for _ in 0..4 {
                 match accept(listener) {
+                    // Filesystem socket permissions are not an access check on
+                    // every Unix host. Check the kernel's peer identity before
+                    // parsing requests or sending any workload output.
+                    #[cfg(unix)]
+                    Ok(stream)
+                        if stream.peer_creds().ok().and_then(|peer| peer.euid())
+                            != Some(rustix::process::geteuid().as_raw()) => {}
                     Ok(stream) if self.clients.len() < MAX_CLIENTS => {
                         self.clients.push(Client::new(self.next_id, stream)?);
                         self.next_id = self

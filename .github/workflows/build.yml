@@ -39,6 +39,9 @@ jobs:
       - name: Unix terminal and inheritance composition
         if: runner.os != 'Windows'
         run: cargo run --locked --features qualification --example terminal_exec
+      - name: Unix control rejects another account through a public socket
+        if: runner.os != 'Windows'
+        run: python3 tools/check_peer.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Linux cgroup placement, descendants and isolated OOM
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_cgroup.py target/debug/madrillo target/debug/madrillo-fixture /sys/fs/cgroup

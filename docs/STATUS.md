@@ -379,3 +379,25 @@ inheritance from the instant of creation; it does not create public state and
 repair it afterward. Native tests check the directory, log and retained result,
 and require an Everyone-writable parent to fail before state exists. This path
 is awaiting Windows execution; it is not yet a C25 conformance claim.
+
+Windows state ACL inheritance at `c7a03d5` passed natively, including private
+result/log ACLs and rejection before creation under an Everyone-writable parent:
+[run 42120489081](https://github.com/pichi-vm/madrillo/actions/runs/42120489081).
+Linux passed in that run; macOS remains queued.
+
+Unix listener admission now checks the kernel-reported effective UID before
+processing requests or sending output. A native two-account qualification
+deliberately makes the socket public, requires another account to connect and
+be rejected, then verifies the original owner can still exchange input/output
+and close the workload normally. Inherited initial control remains an explicit
+transferred capability. macOS execution of this check is pending.
+
+The dillo VM suite at `dd8e8d1` passed on Linux x86-64/KVM and Windows/WHP:
+[run 42119605760](https://github.com/pichi-vm/dillo/actions/runs/42119605760).
+ARM64 Linux and macOS VM jobs remain queued. A further local KVM integration
+test confirms guest input through madrillo, kills madrillo, reaps cooperative
+dillo exit zero and requires no fabricated retained completion. Its boot-output
+scanner initially made the test a stalled viewer; incremental scanning fixed
+the harness, and three focused repetitions passed. These are not full
+conformance passes, and native macOS/Windows monitor-crash integration remains
+unfinished. The full conformance streak remains zero.

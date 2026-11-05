@@ -26,3 +26,8 @@ On Windows, the state directory's existing parent must grant private,
 inheritable access to the invoking user (SYSTEM/Administrators are also
 trusted). Madrillo validates that parent before creating state; it rejects a
 shared parent instead of exposing retained data during an ACL update.
+
+Unix listeners check each connecting process's effective UID against the
+monitor's user before accepting requests or delivering output. This also
+protects custom socket paths on hosts that do not enforce socket permission
+bits. An inherited initial connection remains a caller-transferred capability.
