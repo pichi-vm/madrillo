@@ -1,7 +1,11 @@
 #![forbid(unsafe_code)]
+#[cfg(target_os = "linux")]
+mod cgroup;
 mod connections;
 mod framing;
 mod input;
+#[cfg(unix)]
+mod launch;
 mod logging;
 mod process;
 mod resources;
@@ -26,7 +30,7 @@ use std::{
     ffi::OsString,
     io::{self, Write},
     path::PathBuf,
-    process::{Command, ExitCode, Stdio},
+    process::{ExitCode, Stdio},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -74,6 +78,9 @@ struct Cli {
     log_max_files: u16,
     #[arg(long)]
     no_sync_log: bool,
+    /// Existing, empty, caller-owned Linux cgroup v2 directory for this workload.
+    #[arg(long)]
+    cgroup: Option<PathBuf>,
     /// Force the workload scope after this many seconds.
     #[arg(long, value_parser = clap::value_parser!(u64).range(1..))]
     timeout: Option<u64>,
@@ -84,10 +91,8 @@ struct Cli {
 
 fn main() -> ExitCode {
     #[cfg(unix)]
-    if std::env::args_os().nth(1).as_deref()
-        == Some(std::ffi::OsStr::new("__madrillo_terminal_exec"))
-    {
-        return match terminal::exec() {
+    if std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("__madrillo_exec")) {
+        return match launch::exec() {
             Ok(()) => ExitCode::SUCCESS,
             Err(_) => ExitCode::FAILURE,
         };
@@ -215,9 +220,25 @@ fn supervise(
             },
         )?)
     };
-    let (program, args) = cli.command.split_first().ok_or("missing command")?;
-    let mut command = Command::new(program);
-    command.args(args);
+    #[cfg(target_os = "linux")]
+    let group = cli
+        .cgroup
+        .as_deref()
+        .map(cgroup::Cgroup::open)
+        .transpose()?;
+    #[cfg(not(target_os = "linux"))]
+    if cli.cgroup.is_some() {
+        return Err("--cgroup requires Linux".into());
+    }
+    #[cfg(unix)]
+    let mut command = launch::command(&cli.command, cli.terminal, cli.cgroup.is_some())?;
+    #[cfg(windows)]
+    let mut command = {
+        let (program, args) = cli.command.split_first().ok_or("missing command")?;
+        let mut command = std::process::Command::new(program);
+        command.args(args);
+        command
+    };
     if let Some(cwd) = &cli.cwd {
         command.current_dir(cwd);
     }
@@ -271,7 +292,12 @@ fn supervise(
         2
     };
     let capture = Capture::start(log, !cli.no_sync_log, sources)?;
-    let mut child = Workload::spawn(command, terminal.as_mut())?;
+    let mut child = Workload::spawn(
+        command,
+        terminal.as_mut(),
+        #[cfg(target_os = "linux")]
+        group,
+    )?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();
     // Keep the sole console writer alive with zero clients.
@@ -298,8 +324,7 @@ fn supervise(
         if let Err(kill) = child.force() {
             cleanup_errors.push(kill.to_string());
         }
-        let _ = child.reap();
-        result.cleanup = child.cleanup_result(cleanup_errors);
+        (result.leader, result.cleanup, result.oom) = child.finish(cleanup_errors);
         return Err(error.into());
     }
     loop {
@@ -346,7 +371,7 @@ fn supervise(
     if let Err(error) = child.force() {
         cleanup_errors.push(format!("force workload: {error}"));
     }
-    (result.leader, result.cleanup) = child.finish(cleanup_errors);
+    (result.leader, result.cleanup, result.oom) = child.finish(cleanup_errors);
     input.close();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {

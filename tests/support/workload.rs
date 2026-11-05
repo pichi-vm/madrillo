@@ -105,7 +105,68 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             }
             Ok(0)
         }
-        Some("descendant") => {
+        #[cfg(target_os = "linux")]
+        Some("orphan-parent") => {
+            for _ in 0..24 {
+                let mut child = Command::new(std::env::current_exe()?)
+                    .args(["exit", "0"])
+                    .spawn()?;
+                let _ = child.try_wait()?;
+            }
+            Ok(0)
+        }
+        #[cfg(target_os = "linux")]
+        Some("orphan-reap") => {
+            let status = Command::new(std::env::current_exe()?)
+                .arg("orphan-parent")
+                .status()?;
+            if !status.success() {
+                return Err("orphan parent failed".into());
+            }
+            let parent = nix::unistd::getppid();
+            let path = format!("/proc/{parent}/task/{parent}/children");
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let children = std::fs::read_to_string(&path)?;
+                if children.split_whitespace().count() == 1 {
+                    return Ok(0);
+                }
+                if Instant::now() >= deadline {
+                    return Err(format!("orphans remain: {children}").into());
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        #[cfg(target_os = "linux")]
+        Some("placement") => {
+            let expected = args
+                .get(1)
+                .ok_or("expected cgroup missing")?
+                .to_str()
+                .ok_or("invalid cgroup")?;
+            let actual = std::fs::read_to_string("/proc/self/cgroup")?;
+            if !actual.trim_end().ends_with(expected) {
+                return Err(format!("placement {actual:?} != {expected:?}").into());
+            }
+            Ok(0)
+        }
+        #[cfg(target_os = "linux")]
+        Some("bounded-oom") => {
+            // Caller must install a private 32MiB cgroup limit; never stress
+            // unbounded host memory even if a test setup is incorrect.
+            let mut chunks = Vec::new();
+            for _ in 0..64 {
+                chunks.push(vec![42_u8; 1024 * 1024]);
+                std::hint::black_box(&chunks);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err("64MiB allocation ceiling reached without cgroup OOM".into())
+        }
+        Some("descendant") | Some("escaped-descendant") => {
+            #[cfg(unix)]
+            if args[0] == "escaped-descendant" {
+                nix::unistd::setsid()?;
+            }
             let path = args.get(1).ok_or("heartbeat path missing")?;
             let mut file = std::fs::OpenOptions::new()
                 .create(true)
@@ -119,9 +180,14 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             }
             Ok(0)
         }
-        Some("tree") => {
+        Some("tree") | Some("escaped-tree") => {
+            let mode = if args[0] == "escaped-tree" {
+                "escaped-descendant"
+            } else {
+                "descendant"
+            };
             let mut child = Command::new(std::env::current_exe()?)
-                .arg("descendant")
+                .arg(mode)
                 .arg(args.get(1).ok_or("heartbeat path missing")?)
                 .spawn()?;
             std::thread::sleep(Duration::from_secs(1));

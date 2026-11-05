@@ -291,7 +291,7 @@ impl Client {
             std::thread::sleep(Duration::from_millis(1));
         }
         if written != bytes.len() {
-            return Err("control write deadline".into());
+            return Err(format!("control write deadline: {written}/{} bytes", bytes.len()).into());
         }
         Ok(())
     }

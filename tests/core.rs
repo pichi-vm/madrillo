@@ -156,3 +156,12 @@ fn spawn_failure_is_retained_without_fake_success() -> Result<(), Box<dyn std::e
     assert_eq!(result.cause, CompletionCause::LaunchFailed);
     Ok(())
 }
+
+#[cfg(target_os = "linux")]
+#[test]
+fn adopted_orphans_are_reaped_while_leader_is_running() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let result = run(root.path(), "orphan-reap", &[], &[])?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 0 });
+    Ok(())
+}

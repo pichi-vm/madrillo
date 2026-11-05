@@ -10,11 +10,11 @@ Implemented so far:
 - Protocol/result type draft and explicit unsafe prohibition on owned targets.
 - Bounded framing with six passing tests for malformed/truncated/oversized
   input, fixed version, binary payloads, and bounded encoding without partial
-  oversized transmission. This component is not yet a running monitor.
+  oversized transmission.
 - Captured pipe launch, native argv, retained stdin writer, monotonic timeout,
   bounded capture/log workers, binary CRI logs, file caps/rotation and fsync,
-  private state directories and atomic result publication. Attachment and
-  terminal operation are not implemented in the monitor yet.
+  private state directories and atomic result publication. Live attachment and
+  Unix terminal operation are implemented as described below.
 - Real process tests exercise immediate output/exit, timeout with continuous
   output, retained stdin, native argv, spawn failure and a descendant remaining
   in its scope. These do not prove escaped-descendant containment.
@@ -60,8 +60,8 @@ Both behaviors have executable tests. Windows inherited control is explicitly
 unsupported until its ownership/inheritance path is qualified.
 
 The executable uses Unix process groups as an implementation step and explicitly
-records incomplete cleanup guarantees in its result. Linux cgroup containment
-is not implemented. Windows uses process-wrap's suspended Job Object assignment;
+records incomplete cleanup guarantees in its result when no stronger scope is
+provided. Caller-owned Linux cgroup v2 containment is now implemented. Windows uses process-wrap's suspended Job Object assignment;
 the new end-to-end path is awaiting native CI. Neither implies a full C07 pass.
 Core CI at `9eaeef9` passed on Linux/macOS and the Linux conmon comparison
 passed in [run 42099759289](https://github.com/pichi-vm/madrillo/actions/runs/42099759289).
@@ -95,3 +95,20 @@ before differential tests; twelve comparisons passed in that Linux CI run.
 Next: native CI of core launch, live attachment/input/control, inherited initial
 connection, bounded finalization, native scopes and terminals. macOS arbitrary
 descendant containment remains unresolved; a scope clarification is pending.
+
+Linux cgroup qualification now passes locally: membership before first workload
+code, process-tree cleanup after a descendant calls setsid, both pipe and PTY
+composition, bounded 32MiB cgroup OOM evidence, and rejection of fake control
+files on ordinary filesystems. The monitor uses subreaping throughout the leader's
+lifetime and waits for group emptiness plus adopted-child reaping at cleanup.
+Only caller-supplied, initially empty cgroup v2 scopes are supported so far; v1
+OOM evidence and monitor OOM protection remain pending. The caller owns group
+creation/limits/deletion and must keep the monitor outside the workload group.
+The fresh Unix launcher is shared by pipe and terminal setup, never persists
+after exec, and reports native launch errors on a close-on-exec pipe.
+
+Native run `d08f5d9` passed Unix terminal checks on macOS/Linux and fixed three
+Windows control tests. Large control frames still exceeded their test deadline;
+larger explicit pipe buffers alone did not fix it at `a42c800`. Windows writes
+are now split into bounded 8KiB native operations, with exact progress included
+in a failed test diagnostic. Native verification of that change remains pending.

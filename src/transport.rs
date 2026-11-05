@@ -54,6 +54,10 @@ impl Read for Transport {
 
 impl Write for Transport {
     fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        // Keep an overlapped nonblocking operation below the native pipe
+        // quota; some Windows paths make no progress on an oversized request.
+        #[cfg(windows)]
+        let bytes = &bytes[..bytes.len().min(8192)];
         self.native.write(bytes)
     }
     fn flush(&mut self) -> io::Result<()> {
