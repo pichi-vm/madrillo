@@ -21,9 +21,20 @@ impl Monitor {
     fn initial(mode: &str, gated: bool) -> Result<(Self, Client), Box<dyn std::error::Error>> {
         Self::initial_with_flags(mode, gated, &[])
     }
-    #[cfg(unix)]
     fn initial_with_flags(
         mode: &str,
+        gated: bool,
+        flags: &[&str],
+    ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
+        Self::initial_command(
+            &[env!("CARGO_BIN_EXE_madrillo-fixture"), mode],
+            gated,
+            flags,
+        )
+    }
+    #[cfg(unix)]
+    fn initial_command(
+        workload: &[&str],
         gated: bool,
         flags: &[&str],
     ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
@@ -42,10 +53,7 @@ impl Monitor {
         if gated {
             command.arg("--start-gated");
         }
-        command
-            .arg("--")
-            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
-            .arg(mode);
+        command.arg("--").args(workload);
         command.fd_mappings(vec![FdMapping {
             parent_fd: initial.into(),
             child_fd: 22,
@@ -69,8 +77,8 @@ impl Monitor {
         ))
     }
     #[cfg(windows)]
-    fn initial_with_flags(
-        mode: &str,
+    fn initial_command(
+        workload: &[&str],
         gated: bool,
         flags: &[&str],
     ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
@@ -111,10 +119,7 @@ impl Monitor {
         if gated {
             command.arg("--start-gated");
         }
-        command
-            .arg("--")
-            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
-            .arg(mode);
+        command.arg("--").args(workload);
         let child = command.spawn()?;
         drop(command);
         drop(initial);
@@ -338,6 +343,20 @@ struct Client {
     pending: Vec<u8>,
 }
 impl Client {
+    fn output_until(&mut self, needle: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let mut output = Vec::new();
+        while !output.windows(needle.len()).any(|window| window == needle) {
+            match self.next()? {
+                ServerMessage::Output { stream, bytes } => {
+                    assert_eq!(stream, "stdout");
+                    output.extend_from_slice(&bytes);
+                    assert!(output.len() <= 64 * 1024, "unexpected shell output volume");
+                }
+                response => return Err(format!("unexpected shell response {response:?}").into()),
+            }
+        }
+        Ok(output)
+    }
     fn send(&mut self, message: ClientMessage) -> Result<(), Box<dyn std::error::Error>> {
         let data = serde_json::to_vec(&Request {
             version: PROTOCOL_VERSION,
@@ -397,6 +416,117 @@ impl Client {
         assert_eq!(self.next()?, ServerMessage::Attached { input });
         Ok(())
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn interactive_shell_job_control_survives_detach() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial_command(
+        &[
+            "/usr/bin/env",
+            "PS1=MADRILLO-PROMPT> ",
+            "PS2=MADRILLO-CONTINUE> ",
+            "LC_ALL=C",
+            "ENV=",
+            "BASH_ENV=",
+            "/bin/sh",
+            "-i",
+        ],
+        false,
+        &["--terminal", "--stdin"],
+    )?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    client.output_until(b"MADRILLO-PROMPT> ")?;
+    client.send(ClientMessage::Input {
+        bytes: b"sh -c 'echo JOB_READY; exec sleep 20'\n".to_vec(),
+    })?;
+    // Require the child's line, not the terminal's echo of its command.
+    client.output_until(b"\r\nJOB_READY\r\n")?;
+    client.send(ClientMessage::Input { bytes: vec![26] })?;
+    let stopped = client.output_until(b"MADRILLO-PROMPT> ")?;
+    assert!(
+        String::from_utf8_lossy(&stopped)
+            .to_lowercase()
+            .contains("stopped")
+    );
+    drop(client);
+    std::thread::sleep(Duration::from_millis(30));
+    let mut client = monitor.connect()?;
+    client.attach(true)?;
+    client.send(ClientMessage::Input {
+        bytes: b"jobs\n".to_vec(),
+    })?;
+    let jobs = client.output_until(b"MADRILLO-PROMPT> ")?;
+    assert!(
+        String::from_utf8_lossy(&jobs)
+            .to_lowercase()
+            .contains("stopped")
+    );
+    client.send(ClientMessage::Input {
+        bytes: b"fg\n".to_vec(),
+    })?;
+    // fg prints the resumed command after returning the terminal to its job.
+    client.output_until(b"sleep 20")?;
+    client.send(ClientMessage::Input { bytes: vec![3] })?;
+    client.output_until(b"MADRILLO-PROMPT> ")?;
+    client.send(ClientMessage::Input {
+        bytes: b"exit 37\n".to_vec(),
+    })?;
+    loop {
+        match client.next()? {
+            ServerMessage::Output { .. } => {}
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 37 });
+                assert!(result.log_errors.is_empty());
+                assert!(!result.output_truncated);
+                break;
+            }
+            response => return Err(format!("unexpected shell response {response:?}").into()),
+        }
+    }
+    monitor.wait()
+}
+
+#[cfg(windows)]
+#[test]
+fn native_command_shell_interrupt_survives_detach() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) =
+        Monitor::initial_command(&["cmd.exe", "/d", "/q"], false, &["--terminal", "--stdin"])?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    client.send(ClientMessage::Input {
+        bytes: b"prompt MADRILLO-PROMPT$G\r".to_vec(),
+    })?;
+    client.output_until(b"MADRILLO-PROMPT>")?;
+    client.send(ClientMessage::Input {
+        bytes: b"ping -n 20 127.0.0.1\r".to_vec(),
+    })?;
+    // A reply proves the foreground program is running. TTL is unchanged by
+    // the native English Windows runner's console encoding and VT decoration.
+    client.output_until(b"TTL=")?;
+    drop(client);
+    std::thread::sleep(Duration::from_millis(30));
+    let mut client = monitor.connect()?;
+    client.attach(true)?;
+    client.send(ClientMessage::Input { bytes: vec![3] })?;
+    client.output_until(b"MADRILLO-PROMPT>")?;
+    client.send(ClientMessage::Input {
+        bytes: b"exit 37\r".to_vec(),
+    })?;
+    loop {
+        match client.next()? {
+            ServerMessage::Output { .. } => {}
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 37 });
+                assert!(result.log_errors.is_empty());
+                assert!(!result.output_truncated);
+                break;
+            }
+            response => return Err(format!("unexpected shell response {response:?}").into()),
+        }
+    }
+    monitor.wait()
 }
 
 #[test]

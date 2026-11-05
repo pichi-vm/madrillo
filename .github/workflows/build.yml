@@ -68,6 +68,9 @@ jobs:
       - name: Differential native journal and combined file fixtures
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_journal.py .qualification/reference/oracle.json target/debug/madrillo target/debug/madrillo-fixture
+      - name: Native oversized journal datagram and sealed memfd fallback
+        if: runner.os == 'Linux'
+        run: cargo test --locked --features cli --bin madrillo oversized_datagram_uses_memfd_and_preserves_binary_message -- --ignored --nocapture
       - name: Isolated full disk and synchronization/publication faults
         if: runner.os == 'Linux'
         run: sudo unshare --mount --propagation private python3 tools/check_storage.py target/debug/madrillo target/debug/madrillo-fixture

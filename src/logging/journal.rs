@@ -230,3 +230,73 @@ impl Journal {
         Err(io::ErrorKind::Unsupported.into())
     }
 }
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+    use std::{
+        process::Command,
+        time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    };
+
+    #[test]
+    #[ignore = "requires a native systemd journal; run explicitly in qualification"]
+    fn oversized_datagram_uses_memfd_and_preserves_binary_message()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let id = format!(
+            "madrillo-memfd-{}-{}",
+            std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos()
+        );
+        let labels = vec![format!("MADRILLO_LARGE={}", "x".repeat(24 * 1024))];
+        let mut journal = Journal::open(Metadata {
+            id: &id,
+            name: None,
+            tag: None,
+            labels: &labels,
+            no_partial: false,
+        })?;
+        // Limit only this test's socket. Require the kernel's real EMSGSIZE
+        // before exercising the production fallback; no syscall fault shim.
+        nix::sys::socket::setsockopt(&journal.socket, nix::sys::socket::sockopt::SndBuf, &4096)?;
+        assert!(matches!(journal.socket.send(&journal.metadata),
+                         Err(error) if error.raw_os_error() == Some(nix::libc::EMSGSIZE)));
+        let payload = b"binary\0\xff\n";
+        journal.write_chunk(Stream::Stdout, payload)?;
+        journal.end(Stream::Stdout)?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let query = Command::new("journalctl")
+                .args(["--no-pager", "--all", "-o", "json", "--since", "-1min"])
+                .arg(format!("CONTAINER_ID_FULL={id}"))
+                .output()?;
+            assert!(
+                query.status.success(),
+                "{}",
+                String::from_utf8_lossy(&query.stderr)
+            );
+            if let Some(line) = query
+                .stdout
+                .split(|byte| *byte == b'\n')
+                .find(|line| !line.is_empty())
+            {
+                let entry: serde_json::Value = serde_json::from_slice(line)?;
+                assert_eq!(
+                    serde_json::from_value::<Vec<u8>>(entry["MESSAGE"].clone())?,
+                    payload
+                );
+                let metadata = entry["MADRILLO_LARGE"]
+                    .as_str()
+                    .ok_or("missing large field")?;
+                assert_eq!(metadata.len(), 24 * 1024);
+                assert!(metadata.bytes().all(|byte| byte == b'x'));
+                assert_eq!(entry["PRIORITY"], "6");
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err("journal did not receive the sealed memfd record".into());
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}

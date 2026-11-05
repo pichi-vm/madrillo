@@ -401,3 +401,23 @@ scanner initially made the test a stalled viewer; incremental scanning fixed
 the harness, and three focused repetitions passed. These are not full
 conformance passes, and native macOS/Windows monitor-crash integration remains
 unfinished. The full conformance streak remains zero.
+
+The dillo integration is available as [draft PR 92](https://github.com/pichi-vm/dillo/pull/92),
+at `61b47fa5e08986f1cf3c615579f4449ca55411f4`. Its current revision passes
+Linux x86-64 and Windows VM CI; ARM64 Linux/macOS remain pending. The user asked
+which green PRs need review; no madrillo-dependent PR was fully green at that
+check, and no unrelated existing PR is being presented as a prerequisite.
+
+Terminal qualification now uses an actual Unix interactive shell: launch a
+foreground job, suspend with Ctrl-Z, detach/reattach, verify the stopped job,
+resume with fg, interrupt with Ctrl-C, and retain shell exit 37. This passes
+locally. The equivalent Windows cmd.exe test starts a foreground ping, detaches,
+reattaches, interrupts via the ConPTY input bytes and requires shell exit 37;
+native Windows and macOS results are pending.
+
+A Linux native journal test now lowers only its own socket send buffer,
+requires a real EMSGSIZE from the kernel, then sends binary output plus 24KiB
+metadata through the existing sealed-memfd fallback. The journal's stored bytes
+and complete metadata match. It passes locally and is explicitly invoked by
+Linux qualification CI; ordinary unit runs mark this host-service-dependent
+test ignored. No production logging behavior changed for this test.
