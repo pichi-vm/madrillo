@@ -9,12 +9,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub(crate) fn command(args: &[OsString], terminal: bool, scoped: bool) -> io::Result<Command> {
+pub(crate) fn command(
+    args: &[OsString],
+    terminal: bool,
+    scoped: bool,
+    original_oom_score: Option<i32>,
+) -> io::Result<Command> {
     let mut command = Command::new(std::env::current_exe()?);
     command
         .arg("__madrillo_exec")
         .arg(if terminal { "tty" } else { "pipe" })
         .arg(if scoped { "cgroup" } else { "group" })
+        .arg(original_oom_score.map_or_else(|| "-".into(), |score| score.to_string()))
         .args(args);
     Ok(command)
 }
@@ -102,6 +108,18 @@ pub(crate) fn exec() -> io::Result<()> {
         let mut args = std::env::args_os().skip(2);
         let terminal = args.next().is_some_and(|arg| arg == "tty");
         let scoped = args.next().is_some_and(|arg| arg == "cgroup");
+        let score = args
+            .next()
+            .ok_or_else(|| io::Error::other("missing OOM adjustment"))?;
+        if score != "-" {
+            crate::oom::restore(
+                score
+                    .to_str()
+                    .ok_or_else(|| io::Error::other("invalid OOM adjustment"))?
+                    .parse()
+                    .map_err(io::Error::other)?,
+            )?;
+        }
         if scoped {
             let mut membership = adopt(22)?;
             membership.write_all(b"0")?;

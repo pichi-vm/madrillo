@@ -190,3 +190,16 @@ credentials. Local qualification passed both exact datagram filtering and a
 real Type=notify service with NotifyAccess=main; the service manager accepted
 readiness/status from the actual madrillo MainPID. Native CI verification is
 pending. Non-Linux hosts reject the systemd-specific option explicitly.
+
+Native notification qualification passed at `89c05df` on all three hosts:
+[run 42109457350](https://github.com/pichi-vm/madrillo/actions/runs/42109457350).
+Final notification draining now has a deadline and explicit retained failure
+evidence; queued delivery is not silently treated as success.
+
+Linux now attempts conmon's monitor-only OOM adjustment, restoring the inherited
+value in the fresh workload launcher before user code. A failed protection
+attempt remains a retained monitor warning and does not prevent execution or
+contaminate passthrough stderr. Local pipe/terminal tests passed with denied
+protection; CI additionally requires successful privileged protection. Restoration
+for the exit helper will accompany exit-command implementation. Local full
+current tests and Windows cross-clippy passed; full C01-C30 streak remains 0.

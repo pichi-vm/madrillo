@@ -8,6 +8,8 @@ mod input;
 mod launch;
 mod logging;
 mod notify;
+#[cfg(unix)]
+mod oom;
 mod process;
 mod resources;
 mod state;
@@ -164,6 +166,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let state = State::create(directory)?;
     #[cfg(unix)]
+    let (original_oom_score, oom_warning) = oom::protect();
+    #[cfg(unix)]
     let endpoint = cli
         .listen
         .clone()
@@ -188,9 +192,18 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         },
         log_errors: Vec::new(),
         monitor_errors: Vec::new(),
+        monitor_warnings: Vec::new(),
         output_truncated: false,
     };
-    let supervised = supervise(&cli, &mut connections, &mut result);
+    #[cfg(unix)]
+    result.monitor_warnings.extend(oom_warning);
+    let supervised = supervise(
+        &cli,
+        &mut connections,
+        &mut result,
+        #[cfg(unix)]
+        original_oom_score,
+    );
     if let Err(error) = &supervised {
         result.monitor_errors.push(error.to_string());
         if result.cause == CompletionCause::LaunchFailed {
@@ -224,6 +237,7 @@ fn supervise(
     cli: &Cli,
     connections: &mut Connections,
     result: &mut Completion,
+    #[cfg(unix)] original_oom_score: Option<i32>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     let mut signals = signal_hook::iterator::Signals::new([
@@ -308,7 +322,12 @@ fn supervise(
         return Err("--cgroup requires Linux".into());
     }
     #[cfg(unix)]
-    let mut command = launch::command(&cli.command, cli.terminal, cli.cgroup.is_some())?;
+    let mut command = launch::command(
+        &cli.command,
+        cli.terminal,
+        cli.cgroup.is_some(),
+        original_oom_score,
+    )?;
     #[cfg(windows)]
     let mut command = {
         let (program, args) = cli.command.split_first().ok_or("missing command")?;
@@ -485,6 +504,17 @@ fn supervise(
             }
         }
     }
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while !pump_notifications(&mut notify, result) {
+        if Instant::now() >= deadline {
+            result
+                .monitor_errors
+                .push("notification relay: final delivery deadline expired".into());
+            break;
+        }
+        service(connections, &capture, &mut input, terminal.as_ref())?;
+        thread::sleep(Duration::from_millis(2));
+    }
     Ok(())
 }
 
@@ -590,13 +620,17 @@ fn service(
     Ok(force)
 }
 
-fn pump_notifications(notify: &mut Option<notify::Notify>, result: &mut Completion) {
-    if let Some(relay) = notify
-        && let Err(error) = relay.pump()
-    {
-        result
-            .monitor_errors
-            .push(format!("notification relay: {error}"));
-        *notify = None;
+fn pump_notifications(notify: &mut Option<notify::Notify>, result: &mut Completion) -> bool {
+    if let Some(relay) = notify {
+        match relay.pump() {
+            Ok(drained) => return drained,
+            Err(error) => {
+                result
+                    .monitor_errors
+                    .push(format!("notification relay: {error}"));
+                *notify = None;
+            }
+        }
     }
+    true
 }

@@ -42,7 +42,8 @@ impl Notify {
     pub(crate) fn configure(&self, command: &mut Command) {
         command.env("NOTIFY_SOCKET", &self.path);
     }
-    pub(crate) fn pump(&mut self) -> io::Result<()> {
+    /// True only after the input queue is observed empty and no send is pending.
+    pub(crate) fn pump(&mut self) -> io::Result<bool> {
         for _ in 0..8 {
             if self.pending.is_none() {
                 // One extra byte detects truncation without parsing a prefix.
@@ -50,7 +51,7 @@ impl Notify {
                 match self.input.recv(&mut bytes) {
                     Ok(count) if count <= 16384 => self.pending = filter(&bytes[..count]),
                     Ok(_) => return Err(io::Error::other("notification exceeded 16KiB bound")),
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(true),
                     Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                     Err(error) => return Err(error),
                 }
@@ -59,13 +60,13 @@ impl Notify {
                 match self.output.send(packet) {
                     Ok(count) if count == packet.len() => self.pending = None,
                     Ok(_) => return Err(io::Error::other("short notification datagram")),
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(()),
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => return Ok(false),
                     Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
                     Err(error) => return Err(error),
                 }
             }
         }
-        Ok(())
+        Ok(false)
     }
 }
 #[cfg(target_os = "linux")]
@@ -115,7 +116,7 @@ impl Notify {
         ))
     }
     pub(crate) fn configure(&self, _command: &mut Command) {}
-    pub(crate) fn pump(&mut self) -> io::Result<()> {
+    pub(crate) fn pump(&mut self) -> io::Result<bool> {
         Err(io::ErrorKind::Unsupported.into())
     }
 }

@@ -115,6 +115,31 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         #[cfg(target_os = "linux")]
+        Some("exec-with-oom-score") => {
+            use std::os::unix::process::CommandExt;
+            std::fs::write(
+                "/proc/self/oom_score_adj",
+                args.get(1).ok_or("score missing")?.as_encoded_bytes(),
+            )?;
+            Err(Command::new(args.get(2).ok_or("program missing")?)
+                .args(&args[3..])
+                .exec()
+                .into())
+        }
+        #[cfg(target_os = "linux")]
+        Some("oom-probe") => {
+            let parent = nix::unistd::getppid();
+            let report = serde_json::json!({
+                "monitor": std::fs::read_to_string(format!("/proc/{parent}/oom_score_adj"))?.trim().parse::<i32>()?,
+                "workload": std::fs::read_to_string("/proc/self/oom_score_adj")?.trim().parse::<i32>()?,
+            });
+            std::fs::write(
+                args.get(1).ok_or("report missing")?,
+                serde_json::to_vec(&report)?,
+            )?;
+            Ok(37)
+        }
+        #[cfg(target_os = "linux")]
         Some("notify") => {
             let socket = std::os::unix::net::UnixDatagram::unbound()?;
             socket.connect(std::env::var_os("NOTIFY_SOCKET").ok_or("NOTIFY_SOCKET missing")?)?;
