@@ -13,12 +13,11 @@ use std::{
 };
 
 struct Monitor {
-    child: Child,
+    child: MonitorChild,
     endpoint: PathBuf,
     _root: tempfile::TempDir,
 }
 impl Monitor {
-    #[cfg(unix)]
     fn initial(mode: &str, gated: bool) -> Result<(Self, Client), Box<dyn std::error::Error>> {
         Self::initial_with_flags(mode, gated, &[])
     }
@@ -59,12 +58,75 @@ impl Monitor {
         )?;
         Ok((
             Self {
-                child,
+                child: MonitorChild::Standard(child),
                 endpoint,
                 _root: root,
             },
             Client {
                 stream,
+                pending: Vec::new(),
+            },
+        ))
+    }
+    #[cfg(windows)]
+    fn initial_with_flags(
+        mode: &str,
+        gated: bool,
+        flags: &[&str],
+    ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
+        use interprocess::os::windows::named_pipe::{
+            DuplexPipeStream, PipeListenerOptions, pipe_mode::Bytes,
+        };
+        let root = tempfile::tempdir()?;
+        let suffix = root
+            .path()
+            .file_name()
+            .ok_or("missing temporary name")?
+            .to_string_lossy();
+        let path_text = format!(r"\\.\pipe\madrillo-initial-{}-{suffix}", std::process::id());
+        let endpoint = PathBuf::from(format!(
+            r"\\.\pipe\madrillo-later-{}-{suffix}",
+            std::process::id()
+        ));
+        let path = widestring::U16CString::from_str(&path_text)?;
+        let listener = PipeListenerOptions::new()
+            .path(path.as_ucstr())
+            .nonblocking(true)
+            .input_buffer_size_hint(64 * 1024)
+            .output_buffer_size_hint(64 * 1024)
+            .create::<Bytes, Bytes>()?;
+        let initial = DuplexPipeStream::<Bytes>::connect_by_path(path_text.as_str())?;
+        let parent: interprocess::os::windows::named_pipe::local_socket::Stream =
+            listener.accept()?.into();
+        let mut command = windows_spawn::Command::new(env!("CARGO_BIN_EXE_madrillo"));
+        command
+            .arg("--state-dir")
+            .arg(root.path().join("state"))
+            .arg("--listen")
+            .arg(&endpoint)
+            .args(flags)
+            .arg("--control")
+            .arg_handle(&initial)?
+            .args(["--timeout", "5"]);
+        if gated {
+            command.arg("--start-gated");
+        }
+        command
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg(mode);
+        let child = command.spawn()?;
+        drop(command);
+        drop(initial);
+        parent.set_nonblocking(true)?;
+        Ok((
+            Self {
+                child: MonitorChild::Inherited(child),
+                endpoint,
+                _root: root,
+            },
+            Client {
+                stream: transport::Transport::new(parent.into())?,
                 pending: Vec::new(),
             },
         ))
@@ -97,7 +159,7 @@ impl Monitor {
             .arg(mode)
             .spawn()?;
         Ok(Self {
-            child,
+            child: MonitorChild::Standard(child),
             endpoint,
             _root: root,
         })
@@ -135,25 +197,13 @@ impl Monitor {
 
 #[test]
 fn terminal_size_resize_reattach_and_native_exit() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(unix)]
     let (mut monitor, mut client) = Monitor::initial_with_flags(
         "terminal-probe",
         false,
         &["--terminal", "--size", "31x99", "--stdin"],
     )?;
-    #[cfg(unix)]
-    {
-        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
-        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
-    }
-    #[cfg(windows)]
-    let (mut monitor, mut client) = {
-        let monitor =
-            Monitor::spawn_with_flags("terminal-probe", &["--terminal", "--size", "31x99"])?;
-        let mut client = monitor.connect()?;
-        client.attach(true)?;
-        (monitor, client)
-    };
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
     #[cfg(unix)]
     let (size_line, exit_line) = (b"size\n", b"exit\n");
     #[cfg(windows)]
@@ -221,7 +271,6 @@ fn monitor_sigterm_is_forwarded_and_result_is_finalized() -> Result<(), Box<dyn 
     monitor.wait()
 }
 
-#[cfg(unix)]
 #[test]
 fn initial_connection_retains_first_output_without_waiting_for_a_handshake()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -252,7 +301,6 @@ fn initial_connection_retains_first_output_without_waiting_for_a_handshake()
     monitor.wait()
 }
 
-#[cfg(unix)]
 #[test]
 fn pre_start_disconnect_cancels_and_start_authorizes_execution()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -477,4 +525,39 @@ fn reopen_rotates_the_file_and_acknowledges_completion() -> Result<(), Box<dyn s
     monitor.wait()?;
     assert!(std::fs::read_to_string(logs.join("console.log"))?.ends_with("stdout F after\n"));
     Ok(())
+}
+
+enum MonitorChild {
+    Standard(Child),
+    #[cfg(windows)]
+    Inherited(windows_spawn::Child),
+}
+impl MonitorChild {
+    #[cfg(unix)]
+    fn id(&self) -> u32 {
+        match self {
+            Self::Standard(child) => child.id(),
+        }
+    }
+    fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        match self {
+            Self::Standard(child) => child.try_wait(),
+            #[cfg(windows)]
+            Self::Inherited(child) => child.try_wait(),
+        }
+    }
+    fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
+        match self {
+            Self::Standard(child) => child.wait(),
+            #[cfg(windows)]
+            Self::Inherited(child) => child.wait(),
+        }
+    }
+    fn kill(&mut self) -> io::Result<()> {
+        match self {
+            Self::Standard(child) => child.kill(),
+            #[cfg(windows)]
+            Self::Inherited(child) => child.kill(),
+        }
+    }
 }

@@ -56,8 +56,8 @@ cover malformed clients, a stalled viewer, owner release and draining accepted
 input before EOF. No historical output is buffered for replay. The Unix
 inherited initial connection now retains first output without a client handshake;
 the optional gate cancels on pre-Start disconnect and detaches after Start.
-Both behaviors have executable tests. Windows inherited control is explicitly
-unsupported until its ownership/inheritance path is qualified.
+Both behaviors have executable tests. Windows inherited control has now been
+implemented and is awaiting native qualification, as described below.
 
 The executable uses Unix process groups as an implementation step and explicitly
 records incomplete cleanup guarantees in its result when no stronger scope is
@@ -165,3 +165,12 @@ across reads, labels/tags and combined file output. The same test is in Linux CI
 other hosts reject journald explicitly. The memfd fallback is implemented but
 has not yet been independently exercised. Full logging failure injection and
 path-allowlist coverage remain pending.
+
+Windows initial-channel adoption now duplicates and validates the named pipe,
+checks that it has a peer, closes the transferred original, and retains only
+non-inheritable monitor ownership. Safe windows-spawn argument-handle lowering
+is used by the native test launcher, so the numeric argument denotes an actual
+inherited child handle rather than a copied parent number. The same no-handshake,
+pre-Start cancellation and terminal startup tests now execute on Windows too.
+Invalid initial resources are rejected before state creation. Native verification
+is pending; exact arbitrary-handle pass/hold/capture support remains unfinished.

@@ -222,3 +222,25 @@ fn disabled_and_passthrough_log_drivers_preserve_native_execution()
     assert!(!root.path().join("state/console.log").exists());
     Ok(())
 }
+
+#[test]
+fn invalid_initial_resources_are_rejected_before_state_creation()
+-> Result<(), Box<dyn std::error::Error>> {
+    for number in ["0".to_owned(), "1".to_owned(), usize::MAX.to_string()] {
+        let root = tempfile::tempdir()?;
+        let state = root.path().join("state");
+        let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+            .arg("--control")
+            .arg(number)
+            .arg("--state-dir")
+            .arg(&state)
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("emit")
+            .output()?;
+        assert!(!output.status.success());
+        assert!(!state.exists());
+        assert!(output.stdout.is_empty());
+    }
+    Ok(())
+}
