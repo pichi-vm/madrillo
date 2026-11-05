@@ -240,3 +240,13 @@ Stale LISTEN_PIDFDID is removed when forwarding to a different process. Real
 systemd-socket-activate tests passed for two named sockets in pipe and PTY modes.
 Local current tests, cgroup placement/escaped-descendant/OOM tests, notification
 service tests and Windows cross-clippy passed. Full conformance remains 0/3.
+
+The executable conformance gate is in tools/conformance.py. It requires reviewed
+coverage mappings, clean source identity, positive execution markers and native
+Linux/macOS/Windows reports with matching log hashes. Aggregation records failures
+and resets the streak; repeated invocation/round IDs cannot be counted twice.
+Five synthetic negative tests passed for missing/modified/nonexecuted/failed
+evidence, changed sources, repeated rounds and pending requirements. The actual
+full preflight correctly failed closed: all C01–C30 coverage remains pending.
+Full native orchestration, complete case mappings and pichi/dillo source/evidence
+are still required. These gate tests are not workload conformance evidence.

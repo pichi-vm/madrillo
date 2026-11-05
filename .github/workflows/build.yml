@@ -23,6 +23,8 @@ jobs:
         run: rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
       - name: Format
         run: cargo fmt --check
+      - name: Conformance gate negative tests (not conformance evidence)
+        run: python3 -m unittest tools/test_conformance.py
       - name: Bare library
         run: cargo check --locked --no-default-features --lib
       - name: All owned targets
