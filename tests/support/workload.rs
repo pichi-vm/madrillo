@@ -20,6 +20,31 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        Some("context-probe") => {
+            fn bytes(value: &std::ffi::OsStr) -> Vec<u8> {
+                #[cfg(unix)]
+                {
+                    value.as_encoded_bytes().to_vec()
+                }
+                #[cfg(windows)]
+                {
+                    use std::os::windows::ffi::OsStrExt;
+                    value.encode_wide().flat_map(u16::to_le_bytes).collect()
+                }
+            }
+            let environment =
+                std::env::var_os("MADRILLO_NATIVE_VALUE").ok_or("native environment missing")?;
+            let report = serde_json::json!({
+                "arguments": args[2..].iter().map(|value| bytes(value)).collect::<Vec<_>>(),
+                "environment": bytes(&environment),
+                "cwd_marker": std::fs::read("cwd-marker")?,
+            });
+            std::fs::write(
+                args.get(1).ok_or("report missing")?,
+                serde_json::to_vec(&report)?,
+            )?;
+            Ok(37)
+        }
         Some("held-probe") => {
             let path = args.get(1).ok_or("held file missing")?;
             #[cfg(unix)]

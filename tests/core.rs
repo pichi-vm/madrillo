@@ -312,3 +312,87 @@ fn exit_command_observes_final_result_and_preserves_native_arguments()
     }
     Ok(())
 }
+
+#[test]
+fn native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::ffi::OsString;
+    #[cfg(unix)]
+    let native = {
+        use std::os::unix::ffi::OsStringExt;
+        OsString::from_vec(b"native-\xff-\xfe".to_vec())
+    };
+    #[cfg(windows)]
+    let native = {
+        use std::os::windows::ffi::OsStringExt;
+        OsString::from_wide(&[b'n' as u16, 0xd800, b'x' as u16, 0xdc00])
+    };
+    fn bytes(value: &OsStr) -> Vec<u8> {
+        #[cfg(unix)]
+        {
+            value.as_encoded_bytes().to_vec()
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            value.encode_wide().flat_map(u16::to_le_bytes).collect()
+        }
+    }
+    for terminal in [false, true] {
+        let root = tempfile::tempdir()?;
+        let state = root.path().join("state");
+        let cwd = root.path().join(&native);
+        fs::create_dir(&cwd)?;
+        fs::write(cwd.join("cwd-marker"), b"correct working directory")?;
+        let report = root.path().join("native.json");
+        let arguments = [
+            OsString::new(),
+            native.clone(),
+            OsString::from("trailing\\"),
+            OsString::from("embedded\\\"quote"),
+            OsString::from("spaces ' $ ` ;"),
+        ];
+        let mut command = Command::new(env!("CARGO_BIN_EXE_madrillo"));
+        command
+            .arg("--state-dir")
+            .arg(&state)
+            .arg("--cwd")
+            .arg(&cwd)
+            .env("MADRILLO_NATIVE_VALUE", &native);
+        if terminal {
+            command.arg("--terminal");
+        }
+        command
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("context-probe")
+            .arg(&report)
+            .args(&arguments);
+        let mut child = command.spawn()?;
+        let deadline = Instant::now() + Duration::from_secs(10);
+        loop {
+            if let Some(status) = child.try_wait()? {
+                assert!(status.success());
+                break;
+            }
+            if Instant::now() >= deadline {
+                child.kill()?;
+                child.wait()?;
+                return Err("native context deadline".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let actual: serde_json::Value = serde_json::from_slice(&fs::read(report)?)?;
+        assert_eq!(
+            actual,
+            serde_json::json!({
+                "arguments": arguments.iter().map(|value| bytes(value)).collect::<Vec<_>>(),
+                "environment": bytes(&native),
+                "cwd_marker": b"correct working directory".as_slice(),
+            })
+        );
+        let result: Completion = serde_json::from_slice(&fs::read(state.join("result.json"))?)?;
+        assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+    }
+    Ok(())
+}

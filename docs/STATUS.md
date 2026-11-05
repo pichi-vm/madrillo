@@ -276,3 +276,9 @@ the pinned conmon revision's existing-file bypass of its allowlist check.
 Focused tests for existing/new paths, directory boundaries, symlink escape and
 world-writable parents passed locally, as did Windows cross-clippy. Full native
 qualification is pending; Windows reparse-race fault injection remains pending.
+
+Native launch qualification now includes non-Unicode argv/environment/cwd, empty
+arguments, trailing backslashes and embedded quotes through both pipe and host
+terminal launch. The fixture writes raw native encodings to a file, avoiding
+terminal text normalization as an accidental oracle. Local Unix execution and
+Windows cross-clippy passed; macOS/Windows native execution is pending.
