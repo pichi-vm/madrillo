@@ -421,3 +421,28 @@ metadata through the existing sealed-memfd fallback. The journal's stored bytes
 and complete metadata match. It passes locally and is explicitly invoked by
 Linux qualification CI; ordinary unit runs mark this host-service-dependent
 test ignored. No production logging behavior changed for this test.
+
+
+At the next review, dillo source revision `61b47fa5` passes the full native VM
+matrix (Linux x86-64 and ARM64/KVM, macOS ARM64/HVF, Windows/WHP), plus the
+separate three-host console-pipe matrix. PR 92 still has one Linux ARM64 merge
+job queued; no queued job has been restarted or counted as passed.
+
+Madrillo `f9ebaf1` passes Linux and Windows qualification, including actual
+Windows cmd.exe interrupt/detach and the Linux journal memfd fallback. Its macOS
+job was initially cancelled without running any steps. A retry passed the Rust
+suite, then exposed a harness error: the switched-account Python probe inherited
+a private checkout working directory and failed before attempting the socket.
+The probe now runs from its deliberately public scratch directory. The native
+macOS peer check still needs a passing execution; this is not a product pass.
+
+Pichi's isolated `feat/madrillo-launch` worktree now includes a native initial
+connection, asynchronous bounded framing, retained multi-image workload pins,
+run/detached launch, and initial attachment/discovery code. Local image-GC tests
+show tag removal retains both appliance and source-image roots; unknown and
+incomplete cleanup retain pins, and malformed/partial records stop deletion.
+Work is uncommitted and integration remains unfinished: build, stop/logs,
+native host qualification and the complete terminal contract are still pending.
+Publishing madrillo (currently private) is awaiting user approval so pichi CI
+can fetch the types-only dependency without an existing cross-repository token.
+The full conformance streak remains zero.

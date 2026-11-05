@@ -73,7 +73,7 @@ print("other account connected and was rejected")
 '''
             result = subprocess.run(["sudo", "-n", "-u", "nobody", "/usr/bin/python3",
                                      "-c", probe, str(endpoint), str(os.geteuid())],
-                                    capture_output=True, timeout=10)
+                                    capture_output=True, timeout=10, cwd=root)
             assert result.returncode == 0, (result.stdout, result.stderr)
             assert child.poll() is None, "unauthorized termination was honored"
             payload = b"authorized after rejection\n"
