@@ -31,7 +31,29 @@ struct Client {
     dead: bool,
 }
 
+#[cfg(windows)]
+impl Drop for Client {
+    fn drop(&mut self) {
+        let Stream::NamedPipe(stream) = &self.stream;
+        stream.inner().assume_flushed();
+    }
+}
+
 impl Client {
+    fn new(id: u64, stream: Stream) -> Self {
+        Self {
+            id,
+            stream,
+            header: [0; 4],
+            header_read: 0,
+            payload: Vec::new(),
+            payload_read: 0,
+            outgoing: Vec::new(),
+            written: 0,
+            attached: None,
+            dead: false,
+        }
+    }
     fn request(&mut self) -> Result<Option<Request>, FrameError> {
         if self.header_read < 4 {
             match self.stream.read(&mut self.header[self.header_read..]) {
@@ -141,6 +163,56 @@ impl Client {
 }
 
 impl Connections {
+    pub(crate) fn finish(&mut self) -> io::Result<()> {
+        #[cfg(unix)]
+        self.clients.clear();
+        #[cfg(windows)]
+        {
+            use std::{
+                sync::mpsc,
+                thread,
+                time::{Duration, Instant},
+            };
+            let (done, completed) = mpsc::sync_channel(MAX_CLIENTS);
+            let mut count = 0;
+            for client in self.clients.drain(..).filter(|client| !client.dead) {
+                let done = done.clone();
+                // At most MAX_CLIENTS final drain workers. Routine disconnects
+                // never enter the dependency's implicit pipe-flushing pool.
+                thread::Builder::new()
+                    .name("madrillo-final-delivery".into())
+                    .spawn(move || {
+                        let Stream::NamedPipe(stream) = &client.stream;
+                        let _ = stream.inner().flush();
+                        let _ = done.send(());
+                    })?;
+                count += 1;
+            }
+            let deadline = Instant::now() + Duration::from_secs(1);
+            for _ in 0..count {
+                if completed
+                    .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn initial(&mut self, stream: Stream, input: bool) {
+        let mut client = Client::new(0, stream);
+        client.attached = Some(Vec::new());
+        self.clients.push(client);
+        if input {
+            self.owner = Some(0);
+        }
+    }
+    pub(crate) fn initial_alive(&self) -> bool {
+        self.clients
+            .iter()
+            .any(|client| client.id == 0 && !client.dead)
+    }
     pub(crate) fn bind(path: Option<&Path>) -> io::Result<Self> {
         let listener = if let Some(path) = path {
             let name = path.to_fs_name::<GenericFilePath>()?;
@@ -181,18 +253,7 @@ impl Connections {
             for _ in 0..4 {
                 match listener.accept() {
                     Ok(stream) if self.clients.len() < MAX_CLIENTS => {
-                        self.clients.push(Client {
-                            id: self.next_id,
-                            stream,
-                            header: [0; 4],
-                            header_read: 0,
-                            payload: Vec::new(),
-                            payload_read: 0,
-                            outgoing: Vec::new(),
-                            written: 0,
-                            attached: None,
-                            dead: false,
-                        });
+                        self.clients.push(Client::new(self.next_id, stream));
                         self.next_id = self
                             .next_id
                             .checked_add(1)

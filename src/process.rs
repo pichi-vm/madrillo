@@ -1,7 +1,7 @@
 use madrillo::{CleanupResult, LeaderResult};
 use std::{
     io,
-    process::{ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus},
+    process::{ChildStderr, ChildStdout, Command, ExitStatus},
 };
 
 pub(crate) struct Workload {
@@ -12,6 +12,9 @@ pub(crate) struct Workload {
 }
 
 impl Workload {
+    pub(crate) fn id(&self) -> u32 {
+        self.child.id()
+    }
     pub(crate) fn spawn(command: Command) -> io::Result<Self> {
         #[cfg(unix)]
         {
@@ -47,16 +50,6 @@ impl Workload {
         #[cfg(windows)]
         {
             self.child.stderr().take()
-        }
-    }
-    pub(crate) fn stdin(&mut self) -> Option<ChildStdin> {
-        #[cfg(unix)]
-        {
-            self.child.stdin.take()
-        }
-        #[cfg(windows)]
-        {
-            self.child.stdin().take()
         }
     }
     pub(crate) fn exited(&mut self) -> io::Result<bool> {

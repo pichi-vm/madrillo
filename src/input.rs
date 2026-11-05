@@ -1,49 +1,75 @@
 use std::{
     io::{self, Write},
-    process::ChildStdin,
+    process::Stdio,
 };
 
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
 pub(crate) struct Input {
     #[cfg(unix)]
-    writer: Option<ChildStdin>,
+    writer: Option<std::fs::File>,
     #[cfg(windows)]
-    writer: Option<
-        interprocess::os::windows::named_pipe::SendPipeStream<
-            interprocess::os::windows::named_pipe::pipe_mode::Bytes,
-        >,
-    >,
+    writer: Option<WindowsWriter>,
     pending: Vec<u8>,
     written: usize,
     closing: bool,
 }
 
 impl Input {
-    pub(crate) fn new(writer: Option<ChildStdin>) -> io::Result<Self> {
-        #[cfg(unix)]
-        if let Some(writer) = &writer {
-            use nix::fcntl::{FcntlArg, OFlag, fcntl};
-            let flags = OFlag::from_bits_truncate(fcntl(writer, FcntlArg::F_GETFL)?);
-            fcntl(writer, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
-        }
-        #[cfg(windows)]
-        let writer = writer
-            .map(|writer| -> io::Result<_> {
-                use interprocess::os::windows::named_pipe::{SendPipeStream, pipe_mode::Bytes};
-                let owned: std::os::windows::io::OwnedHandle = writer.into();
-                let pipe = SendPipeStream::<Bytes>::try_from(owned)
-                    .map_err(|error| io::Error::other(error.to_string()))?;
-                pipe.set_nonblocking(true)?;
-                Ok(pipe)
-            })
-            .transpose()?;
-        Ok(Self {
-            writer,
+    pub(crate) fn disabled() -> Self {
+        Self {
+            writer: None,
             pending: Vec::new(),
             written: 0,
             closing: false,
-        })
+        }
+    }
+    pub(crate) fn pipe() -> io::Result<(Self, Stdio)> {
+        #[cfg(unix)]
+        let (writer, input) = {
+            use nix::fcntl::{FcntlArg, OFlag, fcntl};
+            let (reader, writer) = io::pipe()?;
+            let flags = OFlag::from_bits_truncate(fcntl(&writer, FcntlArg::F_GETFL)?);
+            fcntl(&writer, FcntlArg::F_SETFL(flags | OFlag::O_NONBLOCK))?;
+            let owned: std::os::fd::OwnedFd = writer.into();
+            (std::fs::File::from(owned), Stdio::from(reader))
+        };
+        #[cfg(windows)]
+        let (writer, input) = {
+            use interprocess::os::windows::{
+                named_pipe::{PipeListenerOptions, RecvPipeStream, pipe_mode::Bytes},
+                security_descriptor::SecurityDescriptor,
+            };
+            let path = widestring::U16CString::from_str(format!(
+                r"\\.\pipe\madrillo-input-{}",
+                std::process::id()
+            ))
+            .map_err(io::Error::other)?;
+            let sddl =
+                widestring::U16CString::from_str("D:P(A;;GA;;;OW)").map_err(io::Error::other)?;
+            let listener = PipeListenerOptions::new()
+                .path(path.as_ucstr())
+                .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
+                .nonblocking(true)
+                .create_send_only::<Bytes>()?;
+            let reader = RecvPipeStream::<Bytes>::connect_by_path(path.as_ucstr())?;
+            let writer = WindowsWriter {
+                pipe: listener.accept()?,
+            };
+            let owned: std::os::windows::io::OwnedHandle = reader
+                .try_into()
+                .map_err(|_| io::Error::other("unexpected shared input handle"))?;
+            (writer, Stdio::from(owned))
+        };
+        Ok((
+            Self {
+                writer: Some(writer),
+                pending: Vec::new(),
+                written: 0,
+                closing: false,
+            },
+            input,
+        ))
     }
     pub(crate) fn enqueue(&mut self, bytes: &[u8]) -> io::Result<()> {
         if self.writer.is_none() || self.closing {
@@ -77,7 +103,7 @@ impl Input {
     pub(crate) fn flush(&mut self) -> io::Result<()> {
         if self.pending.len() == self.written {
             if self.closing {
-                self.close();
+                self.finish_close()?;
             }
             return Ok(());
         }
@@ -97,7 +123,7 @@ impl Input {
             self.pending.clear();
             self.written = 0;
             if self.closing {
-                self.close();
+                self.finish_close()?;
             }
         }
         Ok(())
@@ -109,5 +135,47 @@ impl Input {
     }
     pub(crate) fn close_after_flush(&mut self) {
         self.closing = true;
+    }
+    fn finish_close(&mut self) -> io::Result<()> {
+        #[cfg(unix)]
+        {
+            self.close();
+        }
+        #[cfg(windows)]
+        if let Some(writer) = self.writer.take() {
+            // One bounded worker for this input's sole EOF transition. Windows
+            // must flush kernel pipe bytes before closing; a non-reading child
+            // must not block deadline or control processing on the monitor.
+            std::thread::Builder::new()
+                .name("madrillo-input-close".into())
+                .spawn(move || {
+                    let _ = writer.pipe.flush();
+                })?;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+struct WindowsWriter {
+    pipe: interprocess::os::windows::named_pipe::SendPipeStream<
+        interprocess::os::windows::named_pipe::pipe_mode::Bytes,
+    >,
+}
+#[cfg(windows)]
+impl Write for WindowsWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.pipe.write(bytes)
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        self.pipe.flush()
+    }
+}
+#[cfg(windows)]
+impl Drop for WindowsWriter {
+    fn drop(&mut self) {
+        // All drain waits are explicitly owned above. Do not let dependency
+        // drop behavior accumulate background workers for stalled consumers.
+        self.pipe.assume_flushed();
     }
 }

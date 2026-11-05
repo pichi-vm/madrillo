@@ -4,6 +4,7 @@ mod framing;
 mod input;
 mod logging;
 mod process;
+mod resources;
 mod state;
 use clap::Parser;
 use connections::Connections;
@@ -43,6 +44,15 @@ struct Cli {
     /// Private Unix socket or Windows named-pipe endpoint for live attachment.
     #[arg(long)]
     listen: Option<PathBuf>,
+    /// Ownership of the already-connected initial control channel.
+    #[arg(long)]
+    control: Option<usize>,
+    /// Wait for Start on the initial channel before executing the workload.
+    #[arg(long, requires = "control")]
+    start_gated: bool,
+    /// Give the initial attachment input ownership.
+    #[arg(long)]
+    stdin: bool,
     /// CRI file path, 'none', or 'passthrough'. Defaults to STATE_DIR/console.log.
     #[arg(long)]
     log_path: Option<OsString>,
@@ -79,6 +89,8 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         writeln!(io::stdout().lock(), "{PROTOCOL_VERSION}")?;
         return Ok(());
     }
+    // Adopt before opening state, endpoints, logs or any worker resources.
+    let initial = cli.control.map(resources::control).transpose()?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let state = State::create(directory)?;
     #[cfg(unix)]
@@ -92,6 +104,9 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .unwrap_or_else(|| PathBuf::from(format!(r"\\.\pipe\madrillo-{}", std::process::id())));
     let mut connections = Connections::bind(Some(&endpoint))?;
+    if let Some(initial) = initial {
+        connections.initial(initial, cli.stdin);
+    }
     let mut result = Completion {
         version: PROTOCOL_VERSION,
         leader: LeaderResult::Unknown,
@@ -122,6 +137,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         connections.poll()?;
         thread::sleep(Duration::from_millis(2));
     }
+    connections.finish()?;
     Ok(())
 }
 
@@ -164,31 +180,43 @@ fn supervise(
     if let Some(cwd) = &cli.cwd {
         command.current_dir(cwd);
     }
-    if passthrough {
+    let mut input = if passthrough {
         command
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
+        Input::disabled()
     } else {
+        let (input, stdin) = Input::pipe()?;
         command
-            .stdin(Stdio::piped())
+            .stdin(stdin)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        input
+    };
+    connections.send(
+        0,
+        ServerMessage::Prepared {
+            monitor_pid: std::process::id(),
+        },
+    )?;
+    if cli.start_gated && !await_start(connections)? {
+        result.cause = CompletionCause::LaunchCancelled;
+        result.cleanup = CleanupResult::Complete;
+        result.exited_at_unix_ms = unix_ms();
+        return Ok(());
     }
     let capture = Capture::start(log, !cli.no_sync_log, if passthrough { 0 } else { 2 })?;
     let mut child = Workload::spawn(command)?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();
     // Keep the sole console writer alive with zero clients.
-    let mut input = match Input::new(child.stdin()) {
-        Ok(input) => input,
-        Err(error) => {
-            let _ = child.force();
-            let _ = child.reap();
-            return Err(error.into());
-        }
-    };
     let workers = (|| -> io::Result<()> {
+        connections
+            .broadcast(ServerMessage::Started {
+                leader_pid: child.id(),
+            })
+            .map_err(io::Error::other)?;
         if let Some(stdout) = child.stdout() {
             capture.read(stdout, Stream::Stdout)?;
         }
@@ -278,6 +306,28 @@ fn supervise(
         }
     }
     Ok(())
+}
+
+fn await_start(connections: &mut Connections) -> Result<bool, Box<dyn std::error::Error>> {
+    loop {
+        for (id, message) in connections.poll()? {
+            match message {
+                ClientMessage::Start if id == 0 => return Ok(true),
+                ClientMessage::Attach { input, streams } => {
+                    connections.attach(id, input, streams)?
+                }
+                _ => connections.error(
+                    id,
+                    ErrorCode::NotRunning,
+                    "workload awaits Start from its initial channel",
+                )?,
+            }
+        }
+        if !connections.initial_alive() {
+            return Ok(false);
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
 }
 
 fn service(

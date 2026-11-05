@@ -53,8 +53,11 @@ Native qualification findings:
 The new live endpoint supports bounded clients, a single input owner, detach
 and reconnect, explicit pipe EOF, force requests and completion delivery. Tests
 cover malformed clients, a stalled viewer, owner release and draining accepted
-input before EOF. No historical output is buffered for replay. The inherited
-initial connection, gate and first-attachment ordering remain unimplemented.
+input before EOF. No historical output is buffered for replay. The Unix
+inherited initial connection now retains first output without a client handshake;
+the optional gate cancels on pre-Start disconnect and detaches after Start.
+Both behaviors have executable tests. Windows inherited control is explicitly
+unsupported until its ownership/inheritance path is qualified.
 
 The executable uses Unix process groups as an implementation step and explicitly
 records incomplete cleanup guarantees in its result. Linux cgroup containment
@@ -64,6 +67,12 @@ Core CI at `9eaeef9` passed on Linux/macOS and the Linux conmon comparison
 passed in [run 42099759289](https://github.com/pichi-vm/madrillo/actions/runs/42099759289).
 Windows stopped at a cfg-specific unused-mut warning before tests; that warning
 is fixed. Windows runtime success is not inferred from cross-compilation.
+
+The next run at `de04499` passed Linux/macOS attachment tests but exposed a real
+Windows stdin-handle permission mismatch. Input now creates its pipe before
+launch instead of attempting to rewrap std's write-only child handle. Explicit
+bounded close/final-delivery workers replace implicit unbounded pipe-drop work.
+Native Windows retesting is pending.
 
 The pinned conmon source has been built locally as a test oracle. The same
 binary fixture produced matching CRI binary payloads and exit 37. The committed

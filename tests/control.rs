@@ -16,6 +16,46 @@ struct Monitor {
     _root: tempfile::TempDir,
 }
 impl Monitor {
+    #[cfg(unix)]
+    fn initial(mode: &str, gated: bool) -> Result<(Self, Client), Box<dyn std::error::Error>> {
+        use command_fds::{CommandFdExt, FdMapping};
+        let root = tempfile::tempdir()?;
+        let endpoint = root.path().join("control.sock");
+        let (parent, initial) = std::os::unix::net::UnixStream::pair()?;
+        let mut command = Command::new(env!("CARGO_BIN_EXE_madrillo"));
+        command
+            .arg("--state-dir")
+            .arg(root.path().join("state"))
+            .arg("--listen")
+            .arg(&endpoint)
+            .args(["--control", "22", "--timeout", "5"]);
+        if gated {
+            command.arg("--start-gated");
+        }
+        command
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg(mode);
+        command.fd_mappings(vec![FdMapping {
+            parent_fd: initial.into(),
+            child_fd: 22,
+        }])?;
+        let child = command.spawn()?;
+        drop(command);
+        parent.set_nonblocking(true)?;
+        let stream = interprocess::os::unix::uds_local_socket::Stream::from(parent).into();
+        Ok((
+            Self {
+                child,
+                endpoint,
+                _root: root,
+            },
+            Client {
+                stream,
+                pending: Vec::new(),
+            },
+        ))
+    }
     fn spawn(mode: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let root = tempfile::tempdir()?;
         #[cfg(unix)]
@@ -73,6 +113,64 @@ impl Monitor {
             std::thread::sleep(Duration::from_millis(5));
         }
     }
+}
+
+#[cfg(unix)]
+#[test]
+fn initial_connection_retains_first_output_without_waiting_for_a_handshake()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial("emit", false)?;
+    // Send nothing. The inherited channel already supplies the initial
+    // attachment before the process is allowed to emit a single byte.
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    let mut stdout = Vec::new();
+    let mut stderr = Vec::new();
+    loop {
+        match client.next()? {
+            ServerMessage::Output { stream, bytes } if stream == "stdout" => {
+                stdout.extend_from_slice(&bytes)
+            }
+            ServerMessage::Output { stream, bytes } if stream == "stderr" => {
+                stderr.extend_from_slice(&bytes)
+            }
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 37 });
+                break;
+            }
+            response => return Err(format!("unexpected {response:?}").into()),
+        }
+    }
+    assert_eq!(stdout, b"first\n\npartial\0\xff");
+    assert_eq!(stderr, b"diagnostic\n");
+    monitor.wait()
+}
+
+#[cfg(unix)]
+#[test]
+fn pre_start_disconnect_cancels_and_start_authorizes_execution()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (mut cancelled, mut initial) = Monitor::initial("emit", true)?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    assert!(std::fs::read(cancelled._root.path().join("state/console.log"))?.is_empty());
+    drop(initial);
+    cancelled.wait()?;
+    let result: madrillo::Completion = serde_json::from_slice(&std::fs::read(
+        cancelled._root.path().join("state/result.json"),
+    )?)?;
+    assert_eq!(result.cause, CompletionCause::LaunchCancelled);
+    assert_eq!(result.leader, madrillo::LeaderResult::Unknown);
+    let (mut started, mut initial) = Monitor::initial("sleep", true)?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    drop(initial);
+    let mut later = started.connect()?;
+    later.send(ClientMessage::Terminate)?;
+    assert!(
+        matches!(later.next()?, ServerMessage::Completed { result } if result.cause == CompletionCause::Forced)
+    );
+    started.wait()
 }
 impl Drop for Monitor {
     fn drop(&mut self) {
