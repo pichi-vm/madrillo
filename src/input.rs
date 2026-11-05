@@ -57,6 +57,7 @@ impl Input {
                 .path(path.as_ucstr())
                 .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
                 .nonblocking(true)
+                .output_buffer_size_hint(64 * 1024)
                 .create_send_only::<Bytes>()?;
             // The child receives ordinary synchronous stdin, even though the
             // monitor's server handle supports overlapped nonblocking writes.

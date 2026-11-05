@@ -1,8 +1,15 @@
 use crate::framing::{FrameError, Frames, MAX_FRAME_BYTES};
 use crate::transport::Transport;
+use interprocess::local_socket::Stream;
+#[cfg(unix)]
 use interprocess::local_socket::{
-    GenericFilePath, Listener, ListenerNonblockingMode, ListenerOptions, Stream, prelude::*,
+    GenericFilePath, Listener, ListenerNonblockingMode, ListenerOptions, prelude::*,
 };
+#[cfg(windows)]
+type Listener = interprocess::os::windows::named_pipe::PipeListener<
+    interprocess::os::windows::named_pipe::pipe_mode::Bytes,
+    interprocess::os::windows::named_pipe::pipe_mode::Bytes,
+>;
 use madrillo::{ClientMessage, ErrorCode, PROTOCOL_VERSION, Request, Response, ServerMessage};
 use std::{
     io::{self, Cursor, Read, Write},
@@ -217,20 +224,30 @@ impl Connections {
     }
     pub(crate) fn bind(path: Option<&Path>) -> io::Result<Self> {
         let listener = if let Some(path) = path {
-            let name = path.to_fs_name::<GenericFilePath>()?;
-            let options = ListenerOptions::new()
-                .name(name)
-                .nonblocking(ListenerNonblockingMode::Both);
+            #[cfg(unix)]
+            let listener = ListenerOptions::new()
+                .name(path.to_fs_name::<GenericFilePath>()?)
+                .nonblocking(ListenerNonblockingMode::Both)
+                .create_sync()?;
             #[cfg(windows)]
-            let options = {
+            let listener = {
                 use interprocess::os::windows::{
-                    local_socket::ListenerOptionsExt, security_descriptor::SecurityDescriptor,
+                    named_pipe::PipeListenerOptions, security_descriptor::SecurityDescriptor,
                 };
                 let sddl = widestring::U16CString::from_str("D:P(A;;GA;;;OW)")
                     .map_err(io::Error::other)?;
-                options.security_descriptor(SecurityDescriptor::deserialize(&sddl)?)
+                let path = widestring::U16CString::from_os_str(path).map_err(io::Error::other)?;
+                PipeListenerOptions::new()
+                    .path(path.as_ucstr())
+                    .nonblocking(true)
+                    // LocalSocket's 512-byte default forces hundreds of polling
+                    // turns for one input frame. Bound native buffers explicitly.
+                    .input_buffer_size_hint(64 * 1024)
+                    .output_buffer_size_hint(64 * 1024)
+                    .security_descriptor(Some(SecurityDescriptor::deserialize(&sddl)?))
+                    .create()?
             };
-            Some(options.create_sync()?)
+            Some(listener)
         } else {
             None
         };
@@ -253,7 +270,7 @@ impl Connections {
         if let Some(listener) = &self.listener {
             // Bound accepts per iteration so a flood cannot starve deadlines.
             for _ in 0..4 {
-                match listener.accept() {
+                match accept(listener) {
                     Ok(stream) if self.clients.len() < MAX_CLIENTS => {
                         self.clients.push(Client::new(self.next_id, stream)?);
                         self.next_id = self
@@ -357,5 +374,18 @@ impl Connections {
         self.clients
             .iter()
             .any(|c| !c.dead && c.written < c.outgoing.len())
+    }
+}
+
+fn accept(listener: &Listener) -> io::Result<Stream> {
+    #[cfg(unix)]
+    {
+        listener.accept()
+    }
+    #[cfg(windows)]
+    {
+        let stream: interprocess::os::windows::named_pipe::local_socket::Stream =
+            listener.accept()?.into();
+        Ok(stream.into())
     }
 }
