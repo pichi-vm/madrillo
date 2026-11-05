@@ -11,12 +11,14 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn create(path: &Path) -> io::Result<Self> {
-        let mut builder = fs::DirBuilder::new();
+        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        {
+        let builder = {
             use std::os::unix::fs::DirBuilderExt;
+            let mut builder = builder;
             builder.mode(0o700);
-        }
+            builder
+        };
         // Refuse reuse: a retained result must never belong to a different run.
         builder.create(path)?;
         Ok(Self {

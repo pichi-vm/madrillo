@@ -50,15 +50,25 @@ Native qualification findings:
   This is promising for dillo cleanup, but combined PTY/inheritance behavior
   and actual native Windows execution remain unqualified.
 
+The new live endpoint supports bounded clients, a single input owner, detach
+and reconnect, explicit pipe EOF, force requests and completion delivery. Tests
+cover malformed clients, a stalled viewer, owner release and draining accepted
+input before EOF. No historical output is buffered for replay. The inherited
+initial connection, gate and first-attachment ordering remain unimplemented.
+
 The executable uses Unix process groups as an implementation step and explicitly
 records incomplete cleanup guarantees in its result. Linux cgroup containment
 is not implemented. Windows uses process-wrap's suspended Job Object assignment;
 the new end-to-end path is awaiting native CI. Neither implies a full C07 pass.
+Core CI at `9eaeef9` passed on Linux/macOS and the Linux conmon comparison
+passed in [run 42099759289](https://github.com/pichi-vm/madrillo/actions/runs/42099759289).
+Windows stopped at a cfg-specific unused-mut warning before tests; that warning
+is fixed. Windows runtime success is not inferred from cross-compilation.
 
 The pinned conmon source has been built locally as a test oracle. The same
 binary fixture produced matching CRI binary payloads and exit 37. The committed
 CI harness independently rebuilds the pinned archive and verifies its digest
-before differential tests; its first execution is pending.
+before differential tests; twelve comparisons passed in that Linux CI run.
 
 Next: native CI of core launch, live attachment/input/control, inherited initial
 connection, bounded finalization, native scopes and terminals. macOS arbitrary

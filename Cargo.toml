@@ -9,7 +9,7 @@ description = "A native process monitor inspired by conmon"
 
 [features]
 default = []
-cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix"]
+cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix", "dep:interprocess", "dep:filedescriptor", "dep:widestring"]
 qualification = ["cli", "dep:filedescriptor", "dep:portable-pty", "dep:process-wrap", "dep:command-fds", "dep:nix", "dep:rustix"]
 
 [lib]
@@ -27,6 +27,10 @@ required-features = ["qualification"]
 
 [[test]]
 name = "core"
+required-features = ["qualification"]
+
+[[test]]
+name = "control"
 required-features = ["qualification"]
 
 [[example]]
@@ -48,6 +52,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 tempfile = { version = "3", optional = true }
 cap-std = { version = "=4.0.3", optional = true }
 cap-fs-ext = { version = "=4.0.3", optional = true }
+interprocess = { version = "=2.4.7", optional = true }
 filedescriptor = { version = "=0.8.3", optional = true }
 portable-pty = { version = "=0.9.0", optional = true }
 process-wrap = { version = "=10.0.1", features = ["std"], optional = true }
@@ -56,6 +61,9 @@ process-wrap = { version = "=10.0.1", features = ["std"], optional = true }
 command-fds = { version = "=0.3.3", optional = true }
 nix = { version = "0.31", features = ["fs", "process", "signal", "poll", "term"], optional = true }
 rustix = { version = "=1.1.6", features = ["process", "termios"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+widestring = { version = "1", optional = true }
 
 [dev-dependencies]
 serde_json = "1"

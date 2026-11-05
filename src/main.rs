@@ -1,15 +1,21 @@
 #![forbid(unsafe_code)]
+mod connections;
+mod framing;
+mod input;
 mod logging;
 mod process;
 mod state;
 use clap::Parser;
+use connections::Connections;
+use input::Input;
 use logging::{
     Capture,
     cri::Stream,
     file::{FileLog, Limits},
 };
 use madrillo::{
-    CleanupResult, Completion, CompletionCause, LeaderResult, OomEvidence, PROTOCOL_VERSION,
+    CleanupResult, ClientMessage, Completion, CompletionCause, ErrorCode, LeaderResult,
+    OomEvidence, PROTOCOL_VERSION, ServerMessage,
 };
 use process::Workload;
 use state::State;
@@ -34,6 +40,9 @@ struct Cli {
     /// Working directory for the child; environment is inherited unchanged.
     #[arg(long)]
     cwd: Option<PathBuf>,
+    /// Private Unix socket or Windows named-pipe endpoint for live attachment.
+    #[arg(long)]
+    listen: Option<PathBuf>,
     /// CRI file path, 'none', or 'passthrough'. Defaults to STATE_DIR/console.log.
     #[arg(long)]
     log_path: Option<OsString>,
@@ -72,6 +81,17 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let state = State::create(directory)?;
+    #[cfg(unix)]
+    let endpoint = cli
+        .listen
+        .clone()
+        .unwrap_or_else(|| directory.join("control.sock"));
+    #[cfg(windows)]
+    let endpoint = cli
+        .listen
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(format!(r"\\.\pipe\madrillo-{}", std::process::id())));
+    let mut connections = Connections::bind(Some(&endpoint))?;
     let mut result = Completion {
         version: PROTOCOL_VERSION,
         leader: LeaderResult::Unknown,
@@ -84,7 +104,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         log_errors: Vec::new(),
         output_truncated: false,
     };
-    if let Err(error) = supervise(&cli, &mut result) {
+    if let Err(error) = supervise(&cli, &mut connections, &mut result) {
         result.log_errors.push(error.to_string());
         if result.cause == CompletionCause::LaunchFailed {
             result.leader = LeaderResult::SpawnFailed {
@@ -96,6 +116,12 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         return Err(error);
     }
     state.publish(&result)?;
+    connections.broadcast(ServerMessage::Completed { result })?;
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while connections.pending() && Instant::now() < deadline {
+        connections.poll()?;
+        thread::sleep(Duration::from_millis(2));
+    }
     Ok(())
 }
 
@@ -107,7 +133,11 @@ fn unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
-fn supervise(cli: &Cli, result: &mut Completion) -> Result<(), Box<dyn std::error::Error>> {
+fn supervise(
+    cli: &Cli,
+    connections: &mut Connections,
+    result: &mut Completion,
+) -> Result<(), Box<dyn std::error::Error>> {
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let passthrough = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("passthrough"));
     let no_log = cli.log_path.as_deref() == Some(std::ffi::OsStr::new("none"));
@@ -150,7 +180,14 @@ fn supervise(cli: &Cli, result: &mut Completion) -> Result<(), Box<dyn std::erro
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();
     // Keep the sole console writer alive with zero clients.
-    let _stdin = child.stdin();
+    let mut input = match Input::new(child.stdin()) {
+        Ok(input) => input,
+        Err(error) => {
+            let _ = child.force();
+            let _ = child.reap();
+            return Err(error.into());
+        }
+    };
     let workers = (|| -> io::Result<()> {
         if let Some(stdout) = child.stdout() {
             capture.read(stdout, Stream::Stdout)?;
@@ -170,6 +207,17 @@ fn supervise(cli: &Cli, result: &mut Completion) -> Result<(), Box<dyn std::erro
         return Err(error.into());
     }
     loop {
+        match service(connections, &capture, &mut input) {
+            Ok(true) => {
+                result.cause = CompletionCause::Forced;
+                break;
+            }
+            Ok(false) => {}
+            Err(error) => {
+                cleanup_errors.push(format!("control service: {error}"));
+                break;
+            }
+        }
         match child.exited() {
             Ok(true) => {
                 result.cause = CompletionCause::LeaderExit;
@@ -202,14 +250,78 @@ fn supervise(cli: &Cli, result: &mut Completion) -> Result<(), Box<dyn std::erro
         }
     };
     result.cleanup = child.cleanup_result(cleanup_errors);
-    match capture.done.recv_timeout(Duration::from_secs(5)) {
-        Ok(report) => result.log_errors.extend(report.errors),
-        Err(error) => {
-            result.output_truncated = true;
-            result.log_errors.push(format!(
-                "output drain/log synchronization did not complete: {error}"
-            ));
+    input.close();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Err(error) = service(connections, &capture, &mut input) {
+            result.log_errors.push(error.to_string());
+            break;
+        }
+        match capture.done.try_recv() {
+            Ok(report) => {
+                while let Ok((stream, bytes)) = capture.output.try_recv() {
+                    connections.output(stream.name(), bytes)?;
+                }
+                result.log_errors.extend(report.errors);
+                break;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) if Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(2))
+            }
+            Err(error) => {
+                result.output_truncated = true;
+                result.log_errors.push(format!(
+                    "output drain/log synchronization did not complete: {error}"
+                ));
+                break;
+            }
         }
     }
     Ok(())
+}
+
+fn service(
+    connections: &mut Connections,
+    capture: &Capture,
+    input: &mut Input,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    let mut force = false;
+    for (id, message) in connections.poll()? {
+        match message {
+            ClientMessage::Attach { input, streams } => connections.attach(id, input, streams)?,
+            ClientMessage::Input { bytes } if connections.owns_input(id) => {
+                if let Err(error) = input.enqueue(&bytes) {
+                    let code = if error.kind() == io::ErrorKind::WouldBlock {
+                        ErrorCode::ResourceLimit
+                    } else {
+                        ErrorCode::InputClosed
+                    };
+                    connections.error(id, code, &error.to_string())?;
+                }
+            }
+            ClientMessage::InputEnd => connections.release_input(id),
+            ClientMessage::CloseInput if connections.owns_input(id) => input.close_after_flush(),
+            ClientMessage::Input { .. } | ClientMessage::CloseInput => connections.error(
+                id,
+                ErrorCode::InputOwned,
+                "attach with input ownership first",
+            )?,
+            ClientMessage::Terminate => force = true,
+            ClientMessage::Wait => {}
+            _ => connections.error(id, ErrorCode::Unsupported, "request is not implemented yet")?,
+        }
+    }
+    if let Err(error) = input.flush() {
+        connections.broadcast(ServerMessage::Error {
+            code: ErrorCode::InputClosed,
+            message: error.to_string(),
+        })?;
+    }
+    for _ in 0..16 {
+        match capture.output.try_recv() {
+            Ok((stream, bytes)) => connections.output(stream.name(), bytes)?,
+            Err(_) => break,
+        }
+    }
+    Ok(force)
 }

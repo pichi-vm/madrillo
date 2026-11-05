@@ -31,7 +31,15 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         Some("echo") => {
-            io::copy(&mut io::stdin(), &mut io::stdout())?;
+            let mut buffer = [0; 8192];
+            loop {
+                let count = io::stdin().read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                io::stdout().write_all(&buffer[..count])?;
+                io::stdout().flush()?;
+            }
             Ok(0)
         }
         Some("flood") => {

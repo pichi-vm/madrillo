@@ -8,10 +8,10 @@ pub(crate) enum Stream {
 }
 
 impl Stream {
-    fn name(self) -> &'static [u8] {
+    pub(crate) fn name(self) -> &'static str {
         match self {
-            Self::Stdout => b"stdout",
-            Self::Stderr => b"stderr",
+            Self::Stdout => "stdout",
+            Self::Stderr => "stderr",
         }
     }
 }
@@ -41,7 +41,7 @@ impl<W: Write> Cri<W> {
             let complete = line.last() == Some(&b'\n');
             self.sink.write_all(timestamp.as_bytes())?;
             self.sink.write_all(b" ")?;
-            self.sink.write_all(stream.name())?;
+            self.sink.write_all(stream.name().as_bytes())?;
             self.sink
                 .write_all(if complete { b" F " } else { b" P " })?;
             self.sink.write_all(line)?;
