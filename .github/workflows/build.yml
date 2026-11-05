@@ -1,0 +1,37 @@
+name: Build and qualification (not full conformance)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Rust
+        run: rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+      - name: Format
+        run: cargo fmt --check
+      - name: Bare library
+        run: cargo check --locked --no-default-features --lib
+      - name: All owned targets
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+      - name: Current tests (coverage remains pending)
+        run: cargo test --locked --all-features
+      - name: Unix inherited pipe qualification
+        if: runner.os != 'Windows'
+        run: cargo run --locked --features qualification --example inherited_pipe
+      - name: State completion status
+        shell: bash
+        run: echo 'These checks do not constitute a full C01-C30 conformance pass.'

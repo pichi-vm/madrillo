@@ -1,0 +1,248 @@
+{
+  "schema": 1,
+  "required_clean_passes": 3,
+  "clean_streak": 0,
+  "requirements": [
+    {
+      "id": "C01",
+      "behavior": "Bare library and safe owned code",
+      "criterion": "Default dependency tree has no process/transport/CLI/logging runtime; every target forbids unsafe; production panic audit is clean",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C02",
+      "behavior": "Native launch",
+      "criterion": "Preserve native argv/env/cwd including non-ASCII and native non-Unicode values; typed spawn errors; no shell interpolation",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C03",
+      "behavior": "Startup and first output",
+      "criterion": "Prepare endpoint/logs/scope before authorized execution; immediate output/exit retained; gated pre-Start EOF launches nothing",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C04",
+      "behavior": "Independent lifetime",
+      "criterion": "In captured pipe/terminal modes, workload survives foreground/detached client exit, crash, and terminal disconnect; monitor independent of caller session/job; passthrough documents its external I/O owner",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C05",
+      "behavior": "Reconnection",
+      "criterion": "Initial connection and later endpoint attach work; no replay race or unbounded historical backlog",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C06",
+      "behavior": "Input ownership",
+      "criterion": "One writer, bounded observers, release on disconnect, explicit pipe EOF; retained writer survives zero clients; Ctrl-D remains bytes",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C07",
+      "behavior": "Workload descendants",
+      "criterion": "Force stop, leader exit, and timeout clean the supported workload tree; fork races, grandchildren, daemonization, and changed process groups are tested",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C08",
+      "behavior": "Reaping and result",
+      "criterion": "Preserve leader native exit/signal/full Windows code and exit time; reap owned/adopted children; no fake success or stale-PID kill",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C09",
+      "behavior": "Terminal mode",
+      "criterion": "Native PTY/ConPTY, controlling terminal/session, initial size, resize, interactive shell/job control, detach/reattach, drain/teardown",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C10",
+      "behavior": "Extra resources",
+      "criterion": "Safe adoption, exact inheritance, capture/pass/hold roles, no leaked writer copies, no argument rewriting or child-API proxy",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C11",
+      "behavior": "CRI file logs",
+      "criterion": "Conmon-compatible timestamp/stream/F/P records; partial lines, binary pipe bytes, terminal merged output, extra source separation",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C12",
+      "behavior": "Log destinations",
+      "criterion": "File, journald where applicable, file+journal, none, passthrough; actual destination behavior and metadata match",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C13",
+      "behavior": "Log controls",
+      "criterion": "Size/global cumulative caps, truncation, rotation/backup count, external reopen, tags/labels, partial metadata, path protection",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C14",
+      "behavior": "Pressure and failures",
+      "criterion": "Bounded queues/client count; sink backpressure and write failures explicit; stalled viewer isolated; control/deadline remains responsive",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C15",
+      "behavior": "Durability",
+      "criterion": "Default log synchronization and explicit opt-out; atomically retained result; sync/storage failures visible; crash claims precisely limited",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C16",
+      "behavior": "Notification relay",
+      "criterion": "Allowed sd_notify messages only, real service attribution, no invented readiness/heartbeat or arbitrary descriptor-store proxy",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C17",
+      "behavior": "Socket activation",
+      "criterion": "Correct inherited descriptors, LISTEN_FDS/LISTEN_FDNAMES semantics and actual child LISTEN_PID; unsupported host integration explicit",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C18",
+      "behavior": "Runtime timeout",
+      "criterion": "Monotonic deadline in monitor after native launch; works detached; kills workload scope and records timeout separately",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C19",
+      "behavior": "Placement",
+      "criterion": "Native membership established before child code/forks; monitor outside workload limits; external manager gate when needed",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C20",
+      "behavior": "OOM evidence",
+      "criterion": "Linux cgroup v1/v2 events/final checks and evidence retention; SIGKILL never fabricated as OOM; other platforms report actual available evidence",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C21",
+      "behavior": "Monitor OOM protection",
+      "criterion": "Attempt permitted protection; failure visible; protection not inherited by workload or exit helper",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C22",
+      "behavior": "Held resources and cleanup",
+      "criterion": "Monitor-only reservations retained then released before final notification; endpoints cleaned; retained state remains readable",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C23",
+      "behavior": "Exit command",
+      "criterion": "Native command/args/delay, no shell, no resource leaks; caller policy independent of original CLI; failure does not replace workload exit",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C24",
+      "behavior": "Monitor loss",
+      "criterion": "Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C25",
+      "behavior": "Protocol and diagnostics",
+      "criterion": "Fixed version, checked lengths/allocations, bounded malformed input; private native endpoint/ACL; separate diagnostics/log levels/native syslog where applicable; CLI help/version/API identity",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C26",
+      "behavior": "Pichi integration",
+      "criterion": "Shared run/build launch, run/attach/logs/wait/stop, IDs/discovery/prune protection, terminal restore/detach/resize semantics",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C27",
+      "behavior": "Locked build channel",
+      "criterion": "Original inherited named-port pipes, bidirectional v0 CBOR, guest-first ordering, virtiofs repo/cache/output remain unchanged",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C28",
+      "behavior": "Crash reconciliation",
+      "criterion": "Missing results remain unknown; engine cleanup is idempotent; monitor death cannot claim a callback ran",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C29",
+      "behavior": "Native distribution",
+      "criterion": "Native Linux/macOS/Windows MSVC build and execution; reproducible locked dependencies, license inventory, package contains full binary and bare lib",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    },
+    {
+      "id": "C30",
+      "behavior": "Monitor termination events",
+      "criterion": "Conmon-equivalent Unix signal forwarding without losing reaping/log finalization; native Windows cancellation semantics documented/tested; raw terminal bytes remain separate",
+      "status": "pending",
+      "tests": [],
+      "evidence": []
+    }
+  ],
+  "passes": []
+}
