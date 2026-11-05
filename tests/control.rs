@@ -580,3 +580,52 @@ fn endpoint_acl_grants_only_the_invoking_user() -> Result<(), Box<dyn std::error
     monitor.wait()?;
     Ok(())
 }
+
+#[cfg(windows)]
+#[test]
+fn state_privacy_is_inherited_before_creation() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let sid = win_custody::current_user_sid_string()?;
+    let user = win_custody::OwnedSid::from_string(&sid)?;
+    let private = win_custody::SecurityDescriptor::from_sddl(&format!("D:P(A;OICI;FA;;;{sid})"))?;
+    private.apply_to_tree(root.path(), true)?;
+    let state = root.path().join("private-state");
+    let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+        .arg("--state-dir")
+        .arg(&state)
+        .arg("--")
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("emit")
+        .output()?;
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    for path in [
+        &state,
+        &state.join("result.json"),
+        &state.join("console.log"),
+    ] {
+        let acl = win_custody::ObjectSecurityDescriptor::query_file(path)?.dacl()?;
+        assert!(!acl.is_empty());
+        assert!(acl.allowed_aces().all(|ace| ace.trustee_matches(&user)));
+    }
+    let public = tempfile::tempdir()?;
+    win_custody::SecurityDescriptor::from_sddl("D:P(A;OICI;FA;;;WD)")?
+        .apply_to_tree(public.path(), true)?;
+    let rejected = public.path().join("state");
+    let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+        .arg("--state-dir")
+        .arg(&rejected)
+        .arg("--")
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("emit")
+        .output()?;
+    assert!(!output.status.success());
+    assert!(
+        !rejected.exists(),
+        "untrusted parent must be rejected before creating state"
+    );
+    Ok(())
+}

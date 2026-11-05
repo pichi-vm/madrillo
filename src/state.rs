@@ -1,6 +1,7 @@
 use madrillo::Completion;
+#[cfg(unix)]
+use std::fs;
 use std::{
-    fs,
     io::{self, Write},
     path::{Path, PathBuf},
 };
@@ -11,16 +12,27 @@ pub(crate) struct State {
 
 impl State {
     pub(crate) fn create(path: &Path) -> io::Result<Self> {
-        let builder = fs::DirBuilder::new();
         #[cfg(unix)]
-        let builder = {
+        {
             use std::os::unix::fs::DirBuilderExt;
-            let mut builder = builder;
+            let mut builder = fs::DirBuilder::new();
             builder.mode(0o700);
-            builder
-        };
-        // Refuse reuse: a retained result must never belong to a different run.
-        builder.create(path)?;
+            // Refuse reuse: a result must never belong to a different run.
+            builder.create(path)?;
+        }
+        #[cfg(windows)]
+        {
+            let parent = path
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(Path::new("."));
+            let name = path
+                .file_name()
+                .ok_or_else(|| io::Error::other("state directory needs a name"))?;
+            // The held parent grants private inheritance before creation. There
+            // is no window with public access followed by an ACL repair.
+            crate::security::state_parent(parent)?.create_dir(name)?;
+        }
         Ok(Self {
             directory: path.to_owned(),
         })

@@ -21,3 +21,8 @@ Their byte limits are exact; stdout/stderr retain conmon's whole-record CRI
 behavior. Capture resources count toward the 64-resource bound and must have
 exclusive read ownership. Windows currently accepts synchronous pipe read
 handles; exact workload inheritance on Windows remains unfinished.
+
+On Windows, the state directory's existing parent must grant private,
+inheritable access to the invoking user (SYSTEM/Administrators are also
+trusted). Madrillo validates that parent before creating state; it rejects a
+shared parent instead of exposing retained data during an ACL update.

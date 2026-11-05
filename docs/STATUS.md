@@ -349,3 +349,33 @@ with unchanged inherited workload arguments, invalid-resource rejection and
 open-writer cancellation passed. All local tests and Windows cross-clippy
 passed. Native Windows/macOS qualification is pending; C10 remains incomplete
 because exact Windows workload inheritance is not implemented.
+
+Named capture at `54b9e24` passed natively on all three hosts:
+[run 42118004018](https://github.com/pichi-vm/madrillo/actions/runs/42118004018).
+
+Dillo integration has started in the isolated `feat/madrillo-console-lifetime`
+branch at `dd8e8d190e5c31552a1e2aab336418c1d7f1210d`. Its opt-in
+--exit-on-stdin-close observes the existing console pipe independently of guest
+reads and requests the existing vCPU stop/VM teardown path. Windows queries the
+native pipe closing state in dillo's OS code; madrillo remains entirely safe
+Rust and gains no liveness channel or dependency on dillo. Linux/macOS use poll;
+macOS requires read readiness to be requested before it reports hangup.
+All native pipe tests now pass with 65536 unread bytes:
+[run 42119605985](https://github.com/pichi-vm/dillo/actions/runs/42119605985).
+
+Dillo's old port-zero RX queue had no stdin producer. A process-wide bounded
+reader now supplies it without holding VM references or blocking device-worker
+teardown. A local KVM test boots a healthy guest, requires proof of input reaching
+that guest, closes the console writer, and observes zero exit without force-kill.
+Native WHP/HVF VM execution and actual madrillo-crash integration remain pending.
+The broader dillo CI is running; the user is restarting ARM64 Linux runners, so
+runner interruptions will be treated as transient and retried. No source change
+has been made to the user's existing dillo worktree or its uncommitted test fix.
+
+Windows state creation now validates a held parent's owner and inheritable DACL
+before mkdir. Only the invoking user, SYSTEM and Administrators may have access,
+and full user access must inherit to directories/files. This uses native ACL
+inheritance from the instant of creation; it does not create public state and
+repair it afterward. Native tests check the directory, log and retained result,
+and require an Everyone-writable parent to fail before state exists. This path
+is awaiting Windows execution; it is not yet a C25 conformance claim.
