@@ -300,7 +300,13 @@
       "behavior": "Placement",
       "criterion": "Native membership established before child code/forks; monitor outside workload limits; external manager gate when needed",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "current-tests",
+        "native-unix-placement",
+        "linux-cgroup-v2",
+        "linux-cgroup-v1",
+        "native-pichi-caller-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -419,7 +425,9 @@
         "native-pichi-caller-unix",
         "native-pichi-caller-windows",
         "native-dillo-console-unix",
-        "native-dillo-console-windows"
+        "native-dillo-console-windows",
+        "native-pichi-vm-unix",
+        "native-pichi-vm-windows"
       ],
       "evidence": [],
       "hosts": [
@@ -433,7 +441,10 @@
       "behavior": "Locked build channel",
       "criterion": "Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "native-pichi-vm-unix",
+        "native-pichi-vm-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -1250,6 +1261,73 @@
         "native monitor crash: unknown state and cleanup inputs retained",
         "native Pichi caller and crash reconciliation passed",
         "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok"
+      ]
+    },
+    {
+      "id": "native-unix-placement",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "native_placement_precedes_workload_and_helpers",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "native placement: terminal=false, early leader/helper membership and outside exit helper passed",
+        "native placement: terminal=true, early leader/helper membership and outside exit helper passed",
+        "test native_placement_precedes_workload_and_helpers ... ok"
+      ]
+    },
+    {
+      "id": "native-pichi-vm-unix",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_pichi_vm.py",
+        "target/debug/madrillo",
+        ".qualification/components/pichi"
+      ],
+      "timeout": 15000,
+      "success_markers": [
+        "native VM suite passed: pichi_build_boots_official_image_to_poweroff",
+        "native VM suite passed: pichi_build_checks_committed_submodule_stores",
+        "native VM suite passed: staged_images_create_extend_and_compose",
+        "native Pichi VM/build: three real build-and-boot suites passed"
+      ]
+    },
+    {
+      "id": "native-pichi-vm-windows",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_pichi_vm.py",
+        "target/debug/madrillo.exe",
+        ".qualification/components/pichi"
+      ],
+      "timeout": 15000,
+      "success_markers": [
+        "native VM suite passed: pichi_build_boots_official_image_to_poweroff",
+        "native VM suite passed: pichi_build_checks_committed_submodule_stores",
+        "native VM suite passed: staged_images_create_extend_and_compose",
+        "native Pichi VM/build: three real build-and-boot suites passed"
       ]
     }
   ],

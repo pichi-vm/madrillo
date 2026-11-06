@@ -8,14 +8,14 @@ import subprocess
 import sys
 
 
-def run(command, pichi, environment, markers):
+def run(command, pichi, environment, markers, timeout=1500):
     result = subprocess.run(command, cwd=pichi, env=environment,
                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                            text=True, encoding="utf-8", errors="replace", timeout=1500)
+                            text=True, encoding="utf-8", errors="replace", timeout=timeout)
     print(result.stdout, end="", flush=True)
     result.check_returncode()
     for marker in markers:
-        assert marker in result.stdout, f"missing native caller evidence: {marker}"
+        assert marker in result.stdout, f"missing native execution evidence: {marker}"
 
 
 def main():
@@ -82,6 +82,14 @@ def main():
             pichi, environment, [test, "1 passed; 0 failed; 0 ignored;"] +
             ([crash] if name.startswith("monitor_crash") else []))
     if os.name == "nt":
+        test = "native_placement_precedes_workload_and_helpers"
+        run(["cargo", "+1.94.0", "test", "--locked", "--all-features", "--test", "core",
+             "--config", f"target.{host}.runner={json.dumps(runner)}", test,
+             "--", "--exact", "--ignored", "--nocapture"],
+            Path(__file__).resolve().parents[1], environment,
+            [f"test {test} ... ok", "1 passed; 0 failed; 0 ignored;"] + [
+                f"native placement: terminal={terminal}, early leader/helper membership and outside exit helper passed"
+                for terminal in ("false", "true")])
         for target, test, evidence in [
             (["--lib"], "cmd::workload::tests::job::caller_loss_preserves_workload",
              ["native Windows caller loss passed (console=false)",

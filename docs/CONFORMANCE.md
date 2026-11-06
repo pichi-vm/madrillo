@@ -56,7 +56,7 @@ or ignored-only runs and requires guest input, sustained unread-input pressure,
 and a cooperative zero exit after monitor death. A separate native pipe test
 proves hangup detection with unread bytes and verifies that observation consumes
 none of them. The C24 cases run these checks against the pinned Dillo checkout;
-the requirement remains pending until its complete native review finishes.
+their native coverage review is complete, as recorded below.
 The resize case sends three non-square dimensions through Dillo's private
 endpoint and reads the guest hvc terminal size, then checks console-loss teardown.
 It uses Fedora 44's fixed virtio-console driver; older Linux kernels reverse
@@ -73,6 +73,25 @@ crash reconciliation. It is shared by focused CI and the C28 case mappings; VM
 and locked build qualification remain separate requirements. Madrillo's native
 control tests additionally kill the monitor before publication and between
 publication and a delayed exit callback, checking retained evidence in each case.
+
+`tools/check_pichi_vm.py MONITOR PICHI_CHECKOUT` runs Pichi's three existing
+real build-and-boot suites: official-image smoke, committed-submodule stores,
+and staged-image create/extend/compose. It builds the same pinned static Arma
+and Corium fixtures as Pichi's native CI, removes their temporary installation
+on exit, and requires each exact test to pass with no ignored tests. C26/C27
+map these commands on all three hosts but remain pending; executable mappings
+do not resolve Windows' unsupported opaque handle inheritance.
+
+This command requires the native hypervisor (KVM, HVF or WHP), Pichi's pinned
+`nightly-2026-07-06` with `rust-src` and `llvm-tools`, and its native guest build
+targets. Linux needs `mkfs.ext4` or the portable filesystem fixture, and 1792
+available 2 MiB hugepages for the staged build guests. macOS and Windows need
+`PICHI_TEST_ROOT_FILESYSTEM` pointing to Pichi's portable ext4 fixture. The
+command chooses the pinned toolchain's `llvm-objcopy` unless `PICHI_TEST_STRIP`
+is supplied. Existing `PICHI_TEST_BUILD_IMAGE_LAYOUT` and `PICHI_TEST_EVIDENCE`
+overrides select a rebuilt appliance and retained VM evidence respectively.
+Windows uses Pichi's existing native test runner; keep its source checkout's
+Cargo configuration clean rather than also installing that runner there.
 
 C28 is ready to execute on all three hosts. Source review confirms that Pichi
 reconnects through the private endpoint and reads retained completion; it never
@@ -158,6 +177,22 @@ helper processes; future helpers must participate in Dillo's shutdown contract.
 The monitor's Windows pipe Job does not kill Dillo on monitor-handle loss, so the
 fixture must observe Dillo's cooperative exit, not substitute forced termination.
 The mapped commands must execute again during each full conformance round.
+
+C19 has native placement mappings but remains pending native review. The first
+workload operation checks its established process group and the monitor's
+separate group; terminal mode also checks the session and controlling terminal.
+An immediate helper must inherit that group. On Windows, the first workload
+and helper operations attempt Job breakaway and must receive access denied.
+An outside control must succeed first, preventing an inherited runner Job from
+masking missing workload placement. The helper creates a detached console and
+a new console process group, which must still inherit the workload Job. An exit
+helper must be able to break away, showing the monitor did not inherit workload
+restrictions. Eight fresh launches run per pipe/terminal mode. These checks use
+the documented [Windows creation flags](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags).
+Linux cgroup v1/v2 probes additionally check first-code membership and that the
+monitor remains outside the workload's cgroup. The existing pre-Start gate test
+covers cancellation before authorization. These placement checks do not claim
+the separately missing ConPTY Job-empty observation.
 
 C11/C12 are ready to execute with native CRI, partial/binary pipe, merged
 terminal, extra-stream, disabled-log and passthrough cases. Linux additionally

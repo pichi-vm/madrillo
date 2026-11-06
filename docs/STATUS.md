@@ -6,8 +6,8 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 C26 and C27 remain pending. Readiness is not a full conformance pass.
 
 Madrillo's native tests, strict checks, diagnostics and distribution pass on
-Linux, macOS and Windows MSVC at `9e4fc55` in
-[run 42191419744](https://github.com/pichi-vm/madrillo/actions/runs/42191419744).
+Linux, macOS and Windows MSVC at `14cfd63` in
+[run 42192607527](https://github.com/pichi-vm/madrillo/actions/runs/42192607527).
 Production Rust sources remain unchanged since `30437e1`; recent changes add
 qualification, caller integration, and CI corrections.
 
@@ -45,6 +45,21 @@ Pinned static guest tools and other task-owned temporary files were removed.
 Full native Pichi/VM/build qualification remains incomplete. Pichi resolves
 PMI-declared bus capacity before launching Dillo, preserves guest-first build
 traffic, and keeps resize a direct Pichi–Dillo channel.
+
+C26/C27 now map `tools/check_pichi_vm.py` to the three existing real VM/build
+suites on every native host. Each exact test must pass without ignored tests;
+the pinned Arma/Corium installation is temporary. The current Pichi
+`11095377` platform run is [42193468104](https://github.com/pichi-vm/pichi/actions/runs/42193468104).
+Windows opaque handle inheritance remains unsupported, so these requirements
+remain pending despite the new executable mappings.
+
+C19 now has a first-code placement fixture for pipe/terminal workloads and an
+immediate helper, with an outside exit helper. Linux passes all sixteen launches
+and the cgroup v2 probe now verifies that the monitor stays outside workload
+limits. The Windows test requires a successful outside breakaway control before
+requiring denied breakaway inside the workload and its helper. It runs through
+the existing native caller harness outside Cargo's restrictive Job. Native
+macOS/Windows qualification is pending; no C19 promotion is claimed yet.
 
 The macOS scope decision is settled: descendants stay in the workload's managed
 process group. Dillo owns shutdown of helpers it deliberately moves outside it.

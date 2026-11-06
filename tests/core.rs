@@ -227,6 +227,65 @@ fn detached_timeout_preserves_reason_and_console_lifetime() -> Result<(), Box<dy
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "requires execution outside restrictive runner/Cargo Jobs"
+)]
+fn native_placement_precedes_workload_and_helpers() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(windows)]
+    {
+        // Without this control, Cargo's own Job could mask absent placement.
+        let root = tempfile::tempdir()?;
+        let status = Command::new(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("scope-outside")
+            .arg(root.path())
+            .status()?;
+        assert!(status.success(), "test host prevents the breakaway control");
+        assert_eq!(fs::read(root.path().join("outside"))?, b"outside");
+    }
+    for terminal in [false, true] {
+        for _ in 0..8 {
+            let root = tempfile::tempdir()?;
+            let state = root.path().join("state");
+            let mut command = Command::new(env!("CARGO_BIN_EXE_madrillo"));
+            command
+                .arg("--state-dir")
+                .arg(&state)
+                .arg("--exit-command")
+                .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+                .args(["--exit-command-arg", "scope-outside", "--exit-command-arg"])
+                .arg(root.path())
+                .stdin(Stdio::null());
+            if terminal {
+                command.arg("--terminal");
+            }
+            command
+                .arg("--")
+                .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+                .arg("scope-probe")
+                .arg(root.path())
+                .arg(if terminal { "terminal" } else { "pipe" });
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                command.creation_flags(0x0100_0000 | 0x0000_0008);
+            }
+            let result = completion(&state, command.spawn()?)?;
+            assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
+            assert_eq!(result.cause, CompletionCause::LeaderExit, "{result:?}");
+            assert!(result.monitor_errors.is_empty(), "{result:?}");
+            assert!(result.log_errors.is_empty(), "{result:?}");
+            assert_eq!(fs::read(root.path().join("helper"))?, b"scoped");
+            assert_eq!(fs::read(root.path().join("outside"))?, b"outside");
+        }
+        println!(
+            "native placement: terminal={terminal}, early leader/helper membership and outside exit helper passed"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let heartbeat = root.path().join("heartbeat");

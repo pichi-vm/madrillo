@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+mod placement;
 use std::{
     io::{self, Read, Write},
     process::{Command, ExitCode},
@@ -20,6 +21,20 @@ fn main() -> ExitCode {
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        Some("scope-probe") => placement::probe(
+            std::path::Path::new(args.get(1).ok_or("scope directory missing")?),
+            args.get(2).is_some_and(|arg| arg == "terminal"),
+        ),
+        Some("scope-helper") => placement::helper(
+            std::path::Path::new(args.get(1).ok_or("scope directory missing")?),
+            args.get(2)
+                .and_then(|arg| arg.to_str())
+                .ok_or("scope leader missing")?
+                .parse()?,
+        ),
+        Some("scope-outside") => placement::outside(std::path::Path::new(
+            args.get(1).ok_or("scope directory missing")?,
+        )),
         #[cfg(unix)]
         Some("exit-by-signal") => {
             let signal = args
@@ -433,6 +448,11 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             let actual = std::fs::read_to_string("/proc/self/cgroup")?;
             if !actual.trim_end().ends_with(expected) {
                 return Err(format!("placement {actual:?} != {expected:?}").into());
+            }
+            let monitor =
+                std::fs::read_to_string(format!("/proc/{}/cgroup", nix::unistd::getppid()))?;
+            if monitor.lines().any(|line| line.ends_with(expected)) {
+                return Err("monitor inherited workload cgroup limits".into());
             }
             Ok(0)
         }
