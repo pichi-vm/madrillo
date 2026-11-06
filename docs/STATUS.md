@@ -6,8 +6,9 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 C26 and C27 remain pending. Readiness is not a full conformance pass.
 
 Madrillo's native tests, strict checks, diagnostics and distribution pass on
-Linux, macOS and Windows MSVC at `321ef70` in
-[run 42194861317](https://github.com/pichi-vm/madrillo/actions/runs/42194861317).
+Linux, macOS and Windows MSVC at `ab4a3b4` in
+[run 42197070591](https://github.com/pichi-vm/madrillo/actions/runs/42197070591),
+including the strengthened Windows detached-descendant fixtures.
 Production Rust sources remain unchanged since `30437e1`; recent changes add
 qualification, caller integration, and CI corrections.
 
@@ -60,7 +61,11 @@ The Windows smoke and submodule VM suites at `11095377` fail at that explicit
 handle-inheritance check. Its retained staged-image artifact instead exposes a
 fixture permission error beneath the shared runner evidence directory. Pichi
 `b41333b8` protects the newly created empty fixture before populating it; this
-is the current component pin. [Native verification is running](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
+is the current component pin. Its [Windows native job](https://github.com/pichi-vm/pichi/actions/runs/42196385368/job/127820597539)
+confirms that fix: the retained staged-image build log now reaches the same
+explicit handle-inheritance rejection as the smoke and submodule suites.
+The [Linux x86 VM/build job](https://github.com/pichi-vm/pichi/actions/runs/42196385368/job/127820597506)
+passes at this pin. ARM64 work remains active and macOS is queued.
 Cancellation was requested for the superseded `544ddff6` and `11095377` manual
 platform runs after confirming this replacement, to free their ARM work.
 
@@ -80,7 +85,9 @@ cgroup versions, and the explicit macOS escape boundary. Windows fixtures
 add detached console groups and null stdio for helpers/grandchildren and
 concurrent spawning; pipe-mode tests require complete Job cleanup evidence.
 Linux descendant/force cases and strict Linux/Windows checks pass locally.
-Native Windows execution is pending. C07 and the full streak remain pending.
+Native Linux, macOS and Windows execution passes in the current qualification
+run above. C07 remains pending because ConPTY cannot yet prove Job emptiness;
+the full streak remains zero.
 
 The full-conformance workflow now orchestrates three fresh rounds per native
 host, retains reports/logs/distributions/reference artifacts, and aggregates
@@ -88,6 +95,12 @@ each round before requiring a streak of three. Its preparation step rejects
 pending coverage before scheduling native runners. Per-round conmon source
 trees are retained separately so the next round cannot reuse an old build.
 This is orchestration, not evidence that any full round has passed.
+The required RPM case now runs Fedora's packaging tools in a disposable native
+container, fixing the missing-toolchain mismatch with the Ubuntu Linux runner.
+The focused RPM workflow uses the same command. Local rootless Podman execution
+passes source packaging, the offline binary build, packaged-monitor execution,
+and license payload checks; its temporary container is removed. Ubuntu/Docker
+CI verification is pending.
 The [first dispatch](https://github.com/pichi-vm/madrillo/actions/runs/42195548702)
 at `e00e529` stopped at the expected pending-coverage checks and scheduled no
 native workloads. It is a verified rejection, not a full conformance pass.

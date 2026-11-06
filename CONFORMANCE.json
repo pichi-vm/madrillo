@@ -936,7 +936,8 @@
       "command": [
         "python3",
         "-B",
-        "tools/check_rpm.py"
+        "tools/check_rpm.py",
+        "--container"
       ],
       "timeout": 1800,
       "success_markers": [

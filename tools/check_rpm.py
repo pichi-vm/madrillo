@@ -1,10 +1,38 @@
 #!/usr/bin/env python3
 """Build the committed source RPM and native binary RPM in temporary directories."""
+import argparse
 from pathlib import Path
+import shutil
 import subprocess
+import sys
 import tempfile
+import uuid
 
 ROOT = Path(__file__).resolve().parent.parent
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--container", action="store_true",
+                    help="run with Fedora's RPM tools in a native Linux container")
+if parser.parse_args().container:
+    runtime = shutil.which("docker") or shutil.which("podman")
+    if runtime is None:
+        parser.error("RPM container qualification requires Docker or Podman")
+    name = f"madrillo-rpm-{uuid.uuid4().hex}"
+    try:
+        subprocess.run([
+            runtime, "run", "--rm", "--name", name,
+            "--security-opt", "label=disable",
+            "--volume", f"{ROOT}:/source:ro", "--workdir", "/source",
+            "registry.fedoraproject.org/fedora:44", "sh", "-ec",
+            "dnf -y install cargo rust cargo-rpm-macros rpm-build gcc git make tar xz gzip python3 findutils\n"
+            "git config --global --add safe.directory /source\n"
+            "python3 -B tools/check_rpm.py",
+        ], check=True, timeout=1650)
+    finally:
+        # --rm handles normal exit; also stop the owned container on timeout.
+        subprocess.run([runtime, "rm", "--force", name], check=False,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
+    sys.exit(0)
 
 
 def run(command, directory):
