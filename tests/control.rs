@@ -12,6 +12,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+#[path = "control/caller_lifetime.rs"]
+mod caller_lifetime;
+
 struct Monitor {
     child: MonitorChild,
     endpoint: PathBuf,
@@ -170,20 +173,7 @@ impl Monitor {
         })
     }
     fn connect(&self) -> Result<Client, Box<dyn std::error::Error>> {
-        let end = Instant::now() + Duration::from_secs(3);
-        loop {
-            match Stream::connect(self.endpoint.as_path().to_fs_name::<GenericFilePath>()?) {
-                Ok(stream) => {
-                    stream.set_nonblocking(true)?;
-                    return Ok(Client {
-                        stream: transport::Transport::new(stream)?,
-                        pending: Vec::new(),
-                    });
-                }
-                Err(_) if Instant::now() < end => std::thread::sleep(Duration::from_millis(5)),
-                Err(error) => return Err(error.into()),
-            }
-        }
+        Client::connect(&self.endpoint)
     }
     fn wait(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         let end = Instant::now() + Duration::from_secs(8);
@@ -420,6 +410,24 @@ struct Client {
     pending: Vec<u8>,
 }
 impl Client {
+    fn connect(endpoint: &std::path::Path) -> Result<Self, Box<dyn std::error::Error>> {
+        let end = Instant::now() + Duration::from_secs(3);
+        loop {
+            match Self::try_connect(endpoint) {
+                Ok(client) => return Ok(client),
+                Err(_) if Instant::now() < end => std::thread::sleep(Duration::from_millis(5)),
+                Err(error) => return Err(error.into()),
+            }
+        }
+    }
+    fn try_connect(endpoint: &std::path::Path) -> io::Result<Self> {
+        let stream = Stream::connect(endpoint.to_fs_name::<GenericFilePath>()?)?;
+        stream.set_nonblocking(true)?;
+        Ok(Self {
+            stream: transport::Transport::new(stream)?,
+            pending: Vec::new(),
+        })
+    }
     fn output_until(&mut self, needle: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         let mut output = Vec::new();
         while !output.windows(needle.len()).any(|window| window == needle) {

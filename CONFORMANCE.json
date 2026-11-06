@@ -57,7 +57,10 @@
       "behavior": "Independent lifetime",
       "criterion": "In captured pipe/terminal modes, workload survives foreground/detached client exit, crash, and terminal disconnect; monitor independent of caller session/job; passthrough documents its external I/O owner",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "native-pichi-caller-unix",
+        "native-pichi-caller-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -1226,7 +1229,8 @@
       "timeout": 1800,
       "success_markers": [
         "native monitor crash: unknown state and cleanup inputs retained",
-        "native Pichi caller and crash reconciliation passed"
+        "native Pichi caller and crash reconciliation passed",
+        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok"
       ]
     },
     {
@@ -1244,14 +1248,15 @@
       "timeout": 1800,
       "success_markers": [
         "native monitor crash: unknown state and cleanup inputs retained",
-        "native Pichi caller and crash reconciliation passed"
+        "native Pichi caller and crash reconciliation passed",
+        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok"
       ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "186071de882ca26a46dfc6ae020cd11de79026ae"
+      "revision": "11095377c9f857cdfdff9f0650646a11eb9d2001"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

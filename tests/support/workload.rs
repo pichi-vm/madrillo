@@ -196,6 +196,20 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 .ok_or("invalid status")?
                 .parse()?)
         }
+        Some("lifetime-probe") => {
+            std::fs::write(args.get(1).ok_or("readiness path missing")?, b"ready")?;
+            loop {
+                let mut line = String::new();
+                if io::stdin().read_line(&mut line)? == 0 {
+                    return Err("caller loss closed workload input".into());
+                }
+                if line.trim() == "exit" {
+                    return Ok(37);
+                }
+                writeln!(io::stdout(), "PROBE:{}", line.trim())?;
+                io::stdout().flush()?;
+            }
+        }
         Some("terminal-probe") => {
             use std::io::IsTerminal;
             if !io::stdin().is_terminal()

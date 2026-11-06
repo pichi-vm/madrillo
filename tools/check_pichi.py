@@ -49,6 +49,7 @@ def main():
               "monitor_crash_preserves_unknown_state_and_cleanup_inputs"]
     crash = "native monitor crash: unknown state and cleanup inputs retained"
     cargo = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "pichi"]
+    lifetime = ["cargo", "+1.94.0", "test", "--locked", "--all-features", "--test", "control"]
     if os.name == "nt":
         script = pichi / ".github/scripts/windows-test-runner.ps1"
         assert script.is_file(), "native Windows test runner is missing"
@@ -56,6 +57,7 @@ def main():
         # Its TOML array keeps native paths (including spaces) as one argument.
         runner = ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)]
         cargo += ["--config", f"target.{host}.runner={json.dumps(runner)}"]
+        lifetime += ["--config", f"target.{host}.runner={json.dumps(runner)}"]
     else:
         markers += [
             "test caller_group_loss_preserves_workload_and_reconnection ... ok",
@@ -63,6 +65,15 @@ def main():
             "test detached_exit_removes_the_child_resize_socket ... ok",
             "test detached_launch_is_discoverable_and_later_wait_reads_retained_exit ... ok",
             "test build_port_remains_direct_and_guest_first_through_monitor_launch ... ok"]
+    test = "caller_lifetime::caller_loss_preserves_pipe_and_terminal"
+    lifetime += [test, "--", "--exact", "--nocapture"]
+    if os.name == "nt":
+        lifetime.append("--ignored")
+    run(lifetime, Path(__file__).resolve().parents[1], environment,
+        [f"test {test} ... ok", "1 passed; 0 failed; 0 ignored;"] + [
+            f"caller lifetime: terminal={terminal}, attached={attached}, loss={loss} passed"
+            for terminal in ("false", "true") for attached in ("false", "true")
+            for loss in ("exit", "crash", "hangup")])
     run([*cargo, "--lib", "--test", "cmd_workload", "--test", "cmd_build",
          "--test", "cmd_run", "--test", "cmd_rmi"], pichi, environment, markers)
     for name in native:

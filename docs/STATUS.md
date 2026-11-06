@@ -22,9 +22,11 @@ Dillo `d39ab98` integrates main's explicit device-bus contract, with `88d507c`
 documenting resize completion. The superseded focused run passed Linux x86 and
 Windows, then failed ARM64 runner setup; its remaining queued job was cancelled.
 In [run 42189290251](https://github.com/pichi-vm/madrillo/actions/runs/42189290251),
-Windows passes, Linux x86 hits a guest boot deadline, and Linux ARM64/macOS remain
-queued. The same four VM cases, including full-buffer monitor loss and resize,
-pass locally on Linux/KVM. The hosted boot failure remains under investigation.
+Windows passed and Linux x86 hit a guest boot deadline. The same four VM cases,
+including full-buffer monitor loss and resize, pass locally on Linux/KVM and
+on hosted Linux x86 and Windows in [run 42190578920](https://github.com/pichi-vm/madrillo/actions/runs/42190578920).
+The earlier boot failure is not reproduced or explained. Linux ARM64/macOS jobs
+remain queued; superseded queued jobs were cancelled rather than duplicated.
 
 Pichi `2907aa45` now resolves image transport preferences against the bundled
 PMI base DT and supplies explicit per-device buses. It preserves fallback when
@@ -49,9 +51,20 @@ outside restrictive runner/Cargo Jobs. Madrillo's focused qualification reuses
 it, removing the duplicate Windows host script. Linux and macOS pass at
 `36d9e608` in [run 42189287103](https://github.com/pichi-vm/madrillo/actions/runs/42189287103).
 Windows failed before tests because Cargo's string runner preserves shell quotes
-literally. Pichi `186071de` and this harness now use Cargo's TOML argument array;
+literally. Pichi `186071de` and this harness use Cargo's TOML argument array;
+the corrected runner executes tests in [run 42190309184](https://github.com/pichi-vm/madrillo/actions/runs/42190309184).
+That run exposed a fixture reading through a second handle while holding its own
+Windows file lock. Pichi `11095377` releases the test-owned lock before rereading;
 native retesting is pending. The negative denied-breakaway fixture still runs
 inside Cargo's restrictive Job.
+
+C04 now has a generic real-caller fixture for pipe and terminal workloads, with
+attached and initially detached startup, normal caller exit, caller scope loss,
+and actual terminal closure. All twelve cases pass locally on Linux. The native
+caller harness requires every case on each host, using a breakaway-permitting
+caller Job on Windows. Windows ConPTY cleanup still records incomplete evidence;
+this lifetime test does not waive C07's separate Job-empty requirement. Native
+macOS and Windows qualification of the new fixture is pending.
 
 The Linux ARM64 Dillo job reached `ares-3` but failed before VM tests because
 the workflow invoked absent `sudo` unconditionally. The workflow now uses
