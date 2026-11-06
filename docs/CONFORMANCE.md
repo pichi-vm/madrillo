@@ -214,15 +214,7 @@ attribution, oversized datagrams, pressure during force/timeout, and two named
 sockets whose metadata identifies the actual workload PID. macOS and Windows
 must reject explicitly requested systemd facilities before launching a workload.
 
-C29 now also requires the native RPM build/payload check on Linux. That case
-uses Docker or Podman to run Fedora 44's cargo-rpm-macros, RPM build tools,
-native Rust/C compilers and Python, including on the Ubuntu conformance runner.
-The checkout is mounted read-only; the container is removed on exit or timeout.
-No privileged container or host toolchain modification is needed. The focused
-RPM workflow executes the same `tools/check_rpm.py --container` command.
-It generates the source RPM in temporary storage, rebuilds it offline,
-executes the packaged monitor, and verifies the executable and license payload.
-Missing build tools fail the case. A full round also needs a fresh
+RPM creation and package checks run in COPR. A full round also needs a fresh
 `.qualification/reference` directory: the conmon builder rejects reuse of an
 existing oracle source tree.
 

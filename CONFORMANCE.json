@@ -479,8 +479,7 @@
       "criterion": "Native Linux/macOS/Windows MSVC build and execution; reproducible locked dependencies, license inventory, package contains full binary and bare lib",
       "status": "ready",
       "tests": [
-        "native-distribution",
-        "linux-native-rpm"
+        "native-distribution"
       ],
       "evidence": [],
       "hosts": [
@@ -924,23 +923,6 @@
       "timeout": 120,
       "success_markers": [
         "test linux_integrations_are_rejected_without_launching_the_workload ... ok"
-      ]
-    },
-    {
-      "id": "linux-native-rpm",
-      "hosts": [
-        "linux"
-      ],
-      "kind": "test",
-      "command": [
-        "python3",
-        "-B",
-        "tools/check_rpm.py",
-        "--container"
-      ],
-      "timeout": 1800,
-      "success_markers": [
-        "Native RPM qualification passed: locked source, offline build, executable launch and license payload"
       ]
     },
     {
