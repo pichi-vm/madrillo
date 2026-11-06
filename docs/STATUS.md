@@ -5,31 +5,33 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
 C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
 
-Pichi's native Windows CLI fixture exercises real `run`/`attach` inside
-ConPTY, initial size and resize, raw input, detach, reattachment, initially
-detached startup, cooperative stop, and native input-mode restoration in the
-same console. Its [first native runs](https://github.com/pichi-vm/madrillo/actions/runs/42184880737)
-exposed a real resize-delivery race: the synchronous Windows pipe listener
-discards clients that close before accept. The older asynchronous-only endpoint
-test did not cover Dillo's listener behavior. No Windows CLI terminal pass is
-claimed.
+Pichi's native caller qualification now passes on Linux, macOS and Windows
+MSVC in [run 42185840826](https://github.com/pichi-vm/madrillo/actions/runs/42185840826).
+The Windows CLI fixture runs actual `run`/`attach` inside ConPTY and verifies
+initial size, resize, raw input, detach, reattachment, detached startup, stop
+and input-mode restoration in the same console. The delayed synchronous
+resize receiver regression also executes successfully on Windows.
 
-Pichi `891cb687` retains the four-byte connection until Dillo closes it after
-consumption, under the existing one-second timeout. It adds no response payload
-or flush worker. Delayed synchronous acceptance, reconnection, a receiver that
-never closes, and the Unix interactive terminal regression pass locally. Native
-Windows retesting is pending. The terminal host is a development dependency,
-and compiled stub fixtures release their temporary build directory immediately.
+The resize fix retains the four-byte connection until Dillo consumes it and
+closes, bounded by the existing one-second timeout. It adds no response payload
+or flush worker. Pichi `51518df6` has the same source tree as the qualified
+`891cb687`; only two commit bodies were rewrapped to pass commit-message lint.
 
-Pichi's host-packaging patch is fixed in `ecb56fdb`; it retains the now-runtime
-`dillo-config` dependency. Dillo `d39ab98` integrates main's explicit device-bus
-contract. Local native resize, console EOF, buffered-input monitor crash, unit,
-CLI and strict Clippy checks pass after updating fixture arguments.
-[Focused Linux x86 and Windows VM qualification passes](https://github.com/pichi-vm/madrillo/actions/runs/42184020365);
-ARM64 VM jobs remain queued. Dillo `88d507c` documents resize connection completion. Pichi still
-pins Dillo `7030527`: adopting the new Dillo requires resolving image transport
-preferences into explicit per-device placements on the caller side. The two
-component qualification pins do not yet prove an integrated final product.
+Pichi's host-packaging patch retains the now-runtime `dillo-config` dependency.
+Dillo `d39ab98` integrates main's explicit device-bus contract, with `88d507c`
+documenting resize completion. [Focused Linux x86 and Windows VM qualification
+passes](https://github.com/pichi-vm/madrillo/actions/runs/42184020365); ARM64 VM
+jobs remain queued.
+
+Pichi `2907aa45` now resolves image transport preferences against the bundled
+PMI base DT and supplies explicit per-device buses. It preserves fallback when
+a preferred bus is absent or full, rejects exhausted capacity, and pins Dillo
+`88d507c` across Cargo and appliance packaging. Both x86-64 and ARM64 metadata
+fixtures execute locally, along with build-port handle preservation. Linux
+caller qualification passes 149 unit tests, 37 CLI tests and both explicit
+native launch/crash cases; packaging and formatting pass. Native macOS and
+Windows retesting is pending. Full native VM/build qualification remains
+incomplete; the aligned pins alone do not establish it.
 
 Console resize now has a direct Pichi–Dillo implementation. Pichi sends the
 interactive terminal's dimensions at startup, on change, and after reattachment;
