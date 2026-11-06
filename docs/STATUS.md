@@ -11,6 +11,23 @@ any workload executes. Linux caller checks pass. Fresh full native rounds must
 qualify this follow-up; the previous passes are not attributed to changed sources.
 Madrillo's production implementation remains unchanged.
 
+The follow-up run [42242142705](https://github.com/pichi-vm/madrillo/actions/runs/42242142705)
+passed all three Windows rounds and macOS rounds one and three. The macOS
+second round failed `blocked_child_input_cannot_hold_force_or_timeout`; Pichi's
+new startup-diagnostic regression passed all six completed native reports.
+Delaying each input write by 750 ms locally reproduced the fixture's five-second
+runtime expiring during setup. The revised fixture establishes administrative
+attachment first, gives the force case a separate setup budget, and checks a
+15-second timeout within five seconds of its deadline. Force completion retains
+its eight-second bound. Both modes passed with setup over six seconds; the
+artificial delay was removed. The full local control suite and strict Madrillo
+Clippy passed. The failed run was canceled when this fixture change required
+fresh qualification; it does not count toward a final clean streak.
+
+An additional strict Pichi Clippy check found existing diagnostics outside the
+changed workload files (including workspace dependencies). It is not claimed
+as passing. Pichi's native caller tests and formatting passed locally.
+
 The [final audit](reviews/07-completion.md) verifies all nine native reports,
 186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.
 The `conformance-evidence` artifact includes each round's reports and logs.

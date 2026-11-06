@@ -485,7 +485,13 @@ impl Client {
         Ok(())
     }
     fn next(&mut self) -> Result<ServerMessage, Box<dyn std::error::Error>> {
-        let end = Instant::now() + Duration::from_secs(8);
+        self.next_with_timeout(Duration::from_secs(8))
+    }
+    fn next_with_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<ServerMessage, Box<dyn std::error::Error>> {
+        let end = Instant::now() + timeout;
         loop {
             if self.pending.len() >= 4 {
                 let size = usize::try_from(u32::from_be_bytes(self.pending[..4].try_into()?))?;
@@ -1132,9 +1138,22 @@ fn failed_result_publication_preserves_collision_and_skips_callback()
 #[test]
 fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std::error::Error>> {
     for force in [false, true] {
-        let mut monitor = Monitor::spawn("sleep")?;
-        let mut writer = monitor.connect()?;
-        writer.attach(true)?;
+        // Input-pressure setup consumes wall time on a loaded host. It must
+        // not use up the force case's safety timeout. The timeout case still
+        // requires an actual deadline and completion within five seconds of it.
+        let started = Instant::now();
+        let runtime = if force { 30 } else { 15 };
+        let (mut monitor, mut writer) = Monitor::initial_command(
+            &[env!("CARGO_BIN_EXE_madrillo-fixture"), "sleep"],
+            false,
+            &["--stdin"],
+            runtime,
+        )?;
+        assert!(matches!(writer.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(writer.next()?, ServerMessage::Started { .. }));
+        // Establish the administrative connection before creating pressure.
+        let mut control = monitor.connect()?;
+        control.attach(false)?;
         for _ in 0..8 {
             writer.send(ClientMessage::Input {
                 bytes: vec![b'x'; 48 * 1024],
@@ -1147,14 +1166,24 @@ fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std:
                 ..
             }
         ));
+        println!(
+            "blocked input: force={force}, pressure established after {:?}",
+            started.elapsed()
+        );
+        assert!(monitor.child.try_wait()?.is_none());
+        assert!(!monitor._root.path().join("state/result.json").exists());
         writer.send(ClientMessage::CloseInput)?;
-        let mut control = monitor.connect()?;
         control.send(if force {
             ClientMessage::Terminate
         } else {
             ClientMessage::Wait
         })?;
-        let ServerMessage::Completed { result } = control.next()? else {
+        let deadline = if force {
+            Duration::from_secs(8)
+        } else {
+            Duration::from_secs(runtime + 5).saturating_sub(started.elapsed())
+        };
+        let ServerMessage::Completed { result } = control.next_with_timeout(deadline)? else {
             return Err("blocked input prevented final completion".into());
         };
         assert_eq!(
@@ -1165,6 +1194,9 @@ fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std:
                 CompletionCause::TimedOut
             }
         );
+        if !force {
+            assert!(started.elapsed() >= Duration::from_secs(runtime));
+        }
         assert_eq!(result.cleanup, madrillo::CleanupResult::Complete);
         monitor.wait()?;
     }
