@@ -437,7 +437,10 @@ impl Client {
             let mut bytes = [0; 8192];
             match self.stream.read(&mut bytes) {
                 Ok(0) => return Err("control EOF before expected response".into()),
-                Ok(count) => self.pending.extend_from_slice(&bytes[..count]),
+                Ok(count) => {
+                    self.pending.extend_from_slice(&bytes[..count]);
+                    continue;
+                }
                 Err(error) if error.kind() == io::ErrorKind::WouldBlock => {}
                 Err(error) => return Err(error.into()),
             }
@@ -565,6 +568,31 @@ fn native_command_shell_interrupt_survives_detach() -> Result<(), Box<dyn std::e
             response => return Err(format!("unexpected shell response {response:?}").into()),
         }
     }
+    monitor.wait()
+}
+
+#[test]
+fn draining_viewer_survives_a_large_startup_burst() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial_with_flags("burst-echo", false, &["--stdin"])?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    let mut received = 0;
+    while received < 256 * 1024 {
+        let ServerMessage::Output { bytes, .. } = client.next()? else {
+            return Err("startup output interrupted".into());
+        };
+        assert!(bytes.iter().all(|byte| *byte == b'x'));
+        received += bytes.len();
+    }
+    assert_eq!(received, 256 * 1024);
+    client.send(ClientMessage::Input {
+        bytes: b"still attached\n".to_vec(),
+    })?;
+    client.output_until(b"still attached\n")?;
+    client.send(ClientMessage::CloseInput)?;
+    assert!(
+        matches!(client.next()?, ServerMessage::Completed { result } if result.leader == madrillo::LeaderResult::Exit { code: 0 })
+    );
     monitor.wait()
 }
 

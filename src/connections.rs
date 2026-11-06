@@ -156,12 +156,21 @@ impl Client {
         if self.written == self.outgoing.len() {
             return Ok(());
         }
-        match self.stream.write(&self.outgoing[self.written..]) {
-            Ok(count) => self.written += count,
-            Err(e)
-                if e.kind() == io::ErrorKind::WouldBlock
-                    || e.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(error),
+        // Drain until actual backpressure. Windows writes are chunked by the
+        // transport; one short write must not strand an otherwise writable
+        // client's backlog. Pending bytes are already bounded per client.
+        while self.written < self.outgoing.len() {
+            match self.stream.write(&self.outgoing[self.written..]) {
+                Ok(0) => break,
+                Ok(count) => self.written += count,
+                Err(e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::Interrupted =>
+                {
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
         }
         if self.written == self.outgoing.len() {
             self.outgoing.clear();

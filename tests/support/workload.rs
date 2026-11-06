@@ -240,7 +240,11 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_secs(20));
             Ok(0)
         }
-        Some("echo") => {
+        Some("echo") | Some("burst-echo") => {
+            if args[0] == "burst-echo" {
+                io::stdout().write_all(&[b'x'; 256 * 1024])?;
+                io::stdout().flush()?;
+            }
             let mut buffer = [0; 8192];
             loop {
                 let count = io::stdin().read(&mut buffer)?;

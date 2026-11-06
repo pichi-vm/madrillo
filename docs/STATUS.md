@@ -783,3 +783,20 @@ then bundles dependency license texts/inventory and Rust library notices.
 The local Linux distribution passed with 81 Cargo dependency entries; its
 temporary target and archive were removed. Native macOS/Windows packaging
 is still pending. This does not increment full conformance.
+
+The approved macOS process-group contract passes native qualification at
+`d8db137` in [run 42158733952](https://github.com/pichi-vm/madrillo/actions/runs/42158733952),
+with Linux and Windows also green. The macOS fixtures require complete cleanup
+for immediate leader exit, ordinary descendants, grandchildren, concurrent
+forks, timeout and force, and demonstrate the deliberate new-session boundary.
+This resolves the macOS scope decision; full cross-platform C07 remains pending.
+
+A repeated Windows real-VM crash qualification failed before the monitor was
+killed: its initial attachment closed while the log retained the guest input
+acknowledgement, in [Dillo run 42158450563](https://github.com/pichi-vm/dillo/actions/runs/42158450563/job/127698098101).
+Inspection found that each flush issued only one Windows 8 KiB write, even
+with a writable peer, leaving a growing encoded backlog. Flush now drains its
+bounded pending bytes until actual backpressure. A 256 KiB startup-burst
+fixture requires complete delivery and subsequent input/EOF on the same
+attachment. Local strict Clippy and all 14 control tests pass; native Windows
+and real-VM retesting are pending. Queue limits remain unchanged.
