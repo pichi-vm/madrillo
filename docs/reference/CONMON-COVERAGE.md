@@ -19,7 +19,7 @@ not copying bugs, unsafe code, every flag alias, or OCI-specific machinery.
 | --- | --- | --- |
 | Independent monitor lifetime, attach/detach, input ownership | Required | One monitor per workload, independent of pichi attachments |
 | Native launch and retained exit result | Required | Leader status and workload cleanup are separate facts |
-| Descendant supervision, reaping, workload termination | Required | Linux cgroup/subreaper, Windows job; macOS containment remains unresolved |
+| Descendant supervision, reaping, workload termination | Required | Linux cgroup/subreaper, Windows job; macOS managed process group under the approved helper contract |
 | Host terminal support and resize | Evaluate for inclusion; recommended opt-in | PTY/ConPTY for host programs; dillo VM console stays on pipes |
 | Conmon logging formats and destinations | Required | CRI file, journald, none, passthrough, supported combinations |
 | Limits, rotation/truncation, reopen, labels/tags | Required where applicable | Do not replace these with a proprietary transcript or a drop-on-full default |
@@ -63,7 +63,7 @@ to ordinary host children merely by copying that call. [Subreaper][subreaper],
 | --- | --- | --- |
 | Linux | Dedicated workload cgroup, monitor outside its limits, subreaper for orphan wait/reap | Delegation/permissions, child membership before execution, all-descendant termination and empty-scope observation; cgroup v1/v2 support cannot be silently conflated |
 | Windows | Job Object containing the workload and descendants, with ordinary breakaway disabled | Membership before execution, nested-job restrictions, completion tracking, safe API composition with ConPTY |
-| macOS | Native process groups/sessions for cooperative workloads; process events for observation | This is not equivalent to cgroup/job containment. A child can change groups/sessions; terminal shells create job-control groups. Arbitrary descendant cleanup has no qualified solution in this design yet |
+| macOS | User-approved native workload process-group contract | Qualify cleanup of ordinary children/grandchildren that stay in the managed group. New groups/sessions, including shell job-control groups, are outside the guarantee and remain the workload's responsibility |
 
 Linux cgroup v2 supplies subtree population and termination facilities; Windows
 jobs normally include newly created children. Neither makes pichi's requested
@@ -72,11 +72,11 @@ of the supplied lifetime scope. Unsupported required containment must be reporte
 rather than silently falling back to killing a single PID. [Linux cgroups][cgroup-v2],
 [Windows jobs][windows-jobs], [Apple process groups][apple-pgroups].
 
-The macOS limitation is an open architecture issue, not permission to drop
-multiprocess dillo. A cooperative dillo can keep helpers under its ownership;
-that contract and abnormal-exit behavior need proof. Periodically enumerating
-PIDs, or observing fork/exit events, is not a race-free substitute for containment.
-Do not claim that all arbitrary daemonizing host programs are covered.
+The user approved this macOS boundary on 2026-11-05. Dillo keeps helpers in the
+managed workload group, and owns cleanup of any deliberate exception. Ordinary
+multiprocess Dillo remains covered; native cleanup and abnormal-exit behavior
+still need proof. Periodic PID enumeration or fork/exit observation does not
+extend the guarantee to arbitrary daemonizing host programs.
 
 Monitor-loss cleanup remains a separate requirement. Dillo detects loss of its
 retained console input and coordinates helper/device cleanup. An immediate
@@ -322,7 +322,7 @@ plugin, logging, process-management, or notification framework is required.
 Before implementation can claim parity, qualify:
 
 1. Native descendant containment, root exit, force stop, timeout, and monitor
-   failure, including macOS terminal job control and Windows job lifetime.
+   failure, including the macOS process-group boundary and Windows job lifetime.
 2. Safe creation/placement, inherited-resource ownership, activation PID setup,
    and PTY/ConPTY composition. Document any dependency API gap instead of adding
    a project-local unsafe escape hatch.
@@ -337,10 +337,11 @@ Before implementation can claim parity, qualify:
    The earlier Linux raw-pipe probe does not qualify PTYs, dillo integration,
    macOS, or Windows.
 
-The remaining architecture work is concrete: macOS containment and safe native
-spawn/terminal/resource composition, including the inherited control channel.
-These are unresolved requirements, not exclusions accepted by simplification.
-No native madrillo tests have run because there is no implementation yet.
+The initial research identified native scope and spawn/terminal/resource
+composition as implementation gates. The macOS scope is now the approved
+process-group contract above. Current implementation and native qualification
+evidence are recorded in [STATUS.md](../STATUS.md); this research inventory
+does not establish a conformance pass.
 
 [cli]: https://github.com/containers/conmon/blob/46837cd4800889521b6eccd4cce75a69249b1702/src/cli.c
 [main]: https://github.com/containers/conmon/blob/46837cd4800889521b6eccd4cce75a69249b1702/src/conmon.c

@@ -262,12 +262,6 @@ impl Connections {
 
     pub(crate) fn poll(&mut self) -> io::Result<Vec<(u64, ClientMessage)>> {
         self.clients.retain(|client| !client.dead);
-        if self
-            .owner
-            .is_some_and(|id| !self.clients.iter().any(|c| c.id == id))
-        {
-            self.owner = None;
-        }
         if let Some(listener) = &self.listener {
             // Bound accepts per iteration so a flood cannot starve deadlines.
             for _ in 0..4 {
@@ -303,6 +297,14 @@ impl Connections {
                 Ok(None) => {}
                 Err(_) => client.dead = true,
             }
+        }
+        // Release EOF/disconnects observed in this turn before servicing a
+        // replacement attachment accepted in the same turn.
+        if self
+            .owner
+            .is_some_and(|id| !self.clients.iter().any(|c| c.id == id && !c.dead))
+        {
+            self.owner = None;
         }
         Ok(messages)
     }
@@ -386,6 +388,52 @@ impl Connections {
         self.clients
             .iter()
             .any(|c| !c.dead && c.written < c.outgoing.len())
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disconnect_releases_input_before_same_turn_attachment()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let endpoint = root.path().join("control.sock");
+        let mut connections = Connections::bind(Some(&endpoint), Vec::new())?;
+        let (original, monitor) = std::os::unix::net::UnixStream::pair()?;
+        connections.initial(
+            interprocess::os::unix::uds_local_socket::Stream::from(monitor).into(),
+            true,
+        )?;
+        let mut replacement = std::os::unix::net::UnixStream::connect(endpoint)?;
+        replacement.set_read_timeout(Some(std::time::Duration::from_secs(1)))?;
+        let request = serde_json::to_vec(&Request {
+            version: PROTOCOL_VERSION,
+            message: ClientMessage::Attach {
+                input: true,
+                streams: Vec::new(),
+            },
+        })?;
+        replacement.write_all(&u32::try_from(request.len())?.to_be_bytes())?;
+        replacement.write_all(&request)?;
+        drop(original);
+        let messages = connections.poll()?;
+        assert_eq!(messages.len(), 1);
+        let (id, ClientMessage::Attach { input, streams }) =
+            messages.into_iter().next().ok_or("missing attachment")?
+        else {
+            return Err("unexpected request".into());
+        };
+        connections.attach(id, input, streams)?;
+        connections.poll()?;
+        let mut header = [0; 4];
+        replacement.read_exact(&mut header)?;
+        let mut payload = vec![0; usize::try_from(u32::from_be_bytes(header))?];
+        replacement.read_exact(&mut payload)?;
+        let response: Response = serde_json::from_slice(&payload)?;
+        assert_eq!(response.message, ServerMessage::Attached { input: true });
+        Ok(())
     }
 }
 

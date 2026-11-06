@@ -739,3 +739,26 @@ workload launch. All 128 ordinary-user macOS diagnostic launches passed at
 [run 42155446764](https://github.com/pichi-vm/madrillo/actions/runs/42155446764).
 The stress fixture fails on the first failed launch; it does not retry failures
 away. Full C01-C30 conformance remains 0/3.
+
+The user approved conmon's native process-group contract for macOS on
+2026-11-05. C07 now covers children and grandchildren remaining in Madrillo's
+managed workload group. Dillo keeps helpers in that group and owns shutdown
+of deliberate exceptions; changed groups/sessions and shell job-control groups
+remain outside this macOS cleanup guarantee. Linux/Windows scope requirements
+are unchanged. The monitor now observes group disappearance after termination
+and reaping before reporting complete macOS cleanup. It sends no further
+termination signal after reaping, avoiding a reused numeric process-group ID.
+
+New fixtures exercise grandchildren and concurrent child creation during
+leader exit, timeout and explicit force, with pipes and terminals. A macOS
+fixture explicitly demonstrates a new-session helper surviving managed-group
+cleanup and observes its bounded natural exit before removing test files.
+Linux strict Clippy and the core fixtures pass; native macOS qualification of
+this contract is pending. C07 and the full conformance streak remain pending.
+
+Caller-group loss exposed a same-turn input ownership bug on Linux and macOS
+in [run 42157026396](https://github.com/pichi-vm/madrillo/actions/runs/42157026396).
+Connections now release input ownership when EOF is observed, before processing
+attachments accepted in that polling turn. A deterministic socket regression
+passes locally, and the existing detach test now reconnects without its masking
+delay. Native caller retesting is pending.

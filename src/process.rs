@@ -308,13 +308,42 @@ impl Workload {
         if let Err(error) = reap_descendants() {
             errors.push(error.to_string());
         }
-        #[cfg(all(unix, not(target_os = "linux")))]
-        errors.push("process-group cleanup cannot guarantee removal of escaped descendants; native workload scope is not implemented yet".into());
+        #[cfg(target_os = "macos")]
+        if let Err(error) = wait_group_empty(self.child.id()) {
+            errors.push(error.to_string());
+        }
+        #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+        errors.push("native workload cleanup is not qualified on this host".into());
         if errors.is_empty() {
             CleanupResult::Complete
         } else {
             CleanupResult::Incomplete { errors }
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn wait_group_empty(leader: u32) -> io::Result<()> {
+    use nix::{errno::Errno, sys::signal::killpg, unistd::Pid};
+    use std::time::{Duration, Instant};
+    let group = Pid::from_raw(i32::try_from(leader).map_err(io::Error::other)?);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        // Force was issued while the leader was still waitable. After reaping
+        // it, only observe the group; never signal a potentially reused ID.
+        // The macOS contract covers members of this group, not escaped jobs.
+        match killpg(group, None) {
+            Err(Errno::ESRCH) => return Ok(()),
+            Err(Errno::EINTR) => {}
+            Err(error) => return Err(error.into()),
+            Ok(()) => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::other(
+                "workload process group remains after termination",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 

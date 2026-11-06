@@ -569,6 +569,63 @@ fn native_command_shell_interrupt_survives_detach() -> Result<(), Box<dyn std::e
 }
 
 #[test]
+fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::error::Error>> {
+    for terminal in [false, true] {
+        for mode in ["waiting-tree", "racing-tree"] {
+            let root = tempfile::tempdir()?;
+            let heartbeat = root.path().join("heartbeat");
+            let flags = if terminal {
+                vec!["--terminal"]
+            } else {
+                Vec::new()
+            };
+            let (mut monitor, mut client) = Monitor::initial_command(
+                &[
+                    env!("CARGO_BIN_EXE_madrillo-fixture"),
+                    mode,
+                    heartbeat.to_str().ok_or("non-Unicode test path")?,
+                ],
+                false,
+                &flags,
+            )?;
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while std::fs::metadata(&heartbeat).map_or(true, |metadata| metadata.len() == 0) {
+                if Instant::now() >= deadline {
+                    return Err("descendants did not start".into());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            client.send(ClientMessage::Terminate)?;
+            loop {
+                match client.next()? {
+                    ServerMessage::Prepared { .. }
+                    | ServerMessage::Started { .. }
+                    | ServerMessage::Output { .. } => {}
+                    ServerMessage::Completed { result } => {
+                        assert_eq!(result.cause, CompletionCause::Forced, "{result:?}");
+                        #[cfg(target_os = "macos")]
+                        assert_eq!(
+                            result.cleanup,
+                            madrillo::CleanupResult::Complete,
+                            "{result:?}"
+                        );
+                        break;
+                    }
+                    response => {
+                        return Err(format!("unexpected force response: {response:?}").into());
+                    }
+                }
+            }
+            monitor.wait()?;
+            let before = std::fs::read(&heartbeat)?;
+            std::thread::sleep(Duration::from_millis(150));
+            assert_eq!(std::fs::read(&heartbeat)?, before, "{mode} survived force");
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn detach_releases_writer_without_closing_child_input() -> Result<(), Box<dyn std::error::Error>> {
     let mut monitor = Monitor::spawn("echo")?;
     let mut first = monitor.connect()?;
@@ -597,7 +654,6 @@ fn detach_releases_writer_without_closing_child_input() -> Result<(), Box<dyn st
         }
     ));
     drop(first);
-    std::thread::sleep(Duration::from_millis(40));
     second.attach(true)?;
     second.send(ClientMessage::Input {
         bytes: payload.clone(),

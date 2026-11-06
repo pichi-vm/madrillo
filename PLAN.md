@@ -42,7 +42,7 @@ behavior, ignored test, absent runner, or unimplemented path is not a pass.
 | C04 | Independent lifetime | In captured pipe/terminal modes, workload survives foreground/detached client exit, crash, and terminal disconnect; monitor independent of caller session/job; passthrough documents its external I/O owner |
 | C05 | Reconnection | Initial connection and later endpoint attach work; no replay race or unbounded historical backlog |
 | C06 | Input ownership | One writer, bounded observers, release on disconnect, explicit pipe EOF; retained writer survives zero clients; Ctrl-D remains bytes |
-| C07 | Workload descendants | Force stop, leader exit, and timeout clean the supported workload tree; fork races, grandchildren, daemonization, and changed process groups are tested |
+| C07 | Workload descendants | Force stop, leader exit, and timeout clean the supported workload scope; fork races and grandchildren are tested on every host. Linux/Windows cover changed groups and daemonization. macOS covers descendants remaining in the managed workload process group; escape tests demonstrate the documented boundary |
 | C08 | Reaping and result | Preserve leader native exit/signal/full Windows code and exit time; reap owned/adopted children; no fake success or stale-PID kill |
 | C09 | Terminal mode | Native PTY/ConPTY, controlling terminal/session, initial size, resize, interactive shell/job control, detach/reattach, drain/teardown |
 | C10 | Extra resources | Safe adoption, exact inheritance, capture/pass/hold roles, no leaked writer copies, no argument rewriting or child-API proxy |
@@ -110,11 +110,15 @@ atomic creation may be needed; no workload code executes before containment.
 Disconnect before gated Start cancels; disconnect after authorization detaches.
 
 Linux needs cgroup scope and subreaping; Windows needs a Job Object with early
-membership. Process groups alone do not solve macOS escaped descendants or
-terminal job-control groups. Resolve that native design with evidence; do not
-silently weaken C07. If full containment needs workload cooperation, document
-the limit and obtain a scope decision instead of marking arbitrary-process
-conformance green.
+membership. The user approved the native conmon process-group contract for
+macOS on 2026-11-05: Madrillo creates a workload process group and stops its
+members, including ordinary children and grandchildren. Workloads must keep
+helpers in that group. Dillo enforces this contract; if it deliberately starts
+a helper in another group or session, Dillo owns that helper's shutdown.
+Arbitrary escaped-descendant containment is outside the macOS guarantee.
+Interactive shells can create separate job-control groups, which have the same
+documented limitation. C07 must test both same-group cleanup and this boundary;
+it must not claim that a process group contains arbitrary daemonizing programs.
 
 Use optional PTY/ConPTY for host programs. Dillo retains pipe console transport,
 not a nested host terminal. Runtime deadline forces scope termination; normal
@@ -123,7 +127,8 @@ is dillo's cooperative contract and is distinct from forced termination.
 Windows kill-on-last-job-handle-close cannot be enabled with only a monitor-owned
 handle if it would kill dillo before console-loss cleanup. Specify handle ownership
 and root-crash behavior before selecting a dependency's default drop policy.
-Neither a process group nor a fork/exit event stream proves macOS containment.
+Neither a process group nor a fork/exit event stream proves macOS containment
+across changes of group or session; that is outside the approved contract.
 
 The primary native exit result does not change if an exit command later fails.
 Publish workload cleanup outcome separately from caller-owned external cleanup;
@@ -143,8 +148,9 @@ only its documented allowlist; dillo/build API traffic stays direct.
    actual fixes. Exit: complete requirement mapping, not a conformance claim.
 2. **Native feasibility:** qualify safe handle adoption/forwarding, scoped spawn,
    descendant accounting, terminal composition, activation PID setup, native
-   endpoint ACLs, and monitor-loss detection. Add focused real fixtures. Resolve
-   macOS containment before claiming the platform implemented. Record dependency
+   endpoint ACLs, and monitor-loss detection. Add focused real fixtures. Qualify
+   the approved macOS process-group cleanup contract before claiming the platform
+   implemented. Record dependency
    versions/API constraints and retain any useful experiments as tests.
 3. **Package and contracts:** implement minimal shared types, CLI-gated runtime,
    bounded framing, typed errors, retained record schema, and conformance harness.

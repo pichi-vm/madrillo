@@ -420,16 +420,73 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             }
             Ok(0)
         }
+        Some("branch") | Some("deep-tree") | Some("waiting-tree") => {
+            let path = args.get(1).ok_or("heartbeat path missing")?;
+            let mut child = Command::new(std::env::current_exe()?)
+                .arg(if args[0] == "branch" {
+                    "descendant"
+                } else {
+                    "branch"
+                })
+                .arg(path)
+                .spawn()?;
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while std::fs::metadata(path).map_or(true, |metadata| metadata.len() == 0) {
+                if Instant::now() >= deadline {
+                    child.kill()?;
+                    child.wait()?;
+                    return Err("grandchild did not become ready".into());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            if args[0] != "deep-tree" {
+                child.wait()?;
+            }
+            Ok(37)
+        }
+        Some("racing-tree") => {
+            let mut children = std::collections::VecDeque::<std::process::Child>::new();
+            let deadline = Instant::now() + Duration::from_secs(15);
+            while Instant::now() < deadline {
+                children.push_back(
+                    Command::new(std::env::current_exe()?)
+                        .arg("descendant")
+                        .arg(args.get(1).ok_or("heartbeat path missing")?)
+                        .spawn()?,
+                );
+                if children.len() > 16 {
+                    let mut child = children.pop_front().ok_or("missing child")?;
+                    child.kill()?;
+                    child.wait()?;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            for mut child in children {
+                child.kill()?;
+                child.wait()?;
+            }
+            Ok(37)
+        }
         Some("tree") | Some("escaped-tree") => {
             let mode = if args[0] == "escaped-tree" {
                 "escaped-descendant"
             } else {
                 "descendant"
             };
-            let mut child = Command::new(std::env::current_exe()?)
+            let mut command = Command::new(std::env::current_exe()?);
+            command
                 .arg(mode)
-                .arg(args.get(1).ok_or("heartbeat path missing")?)
-                .spawn()?;
+                .arg(args.get(1).ok_or("heartbeat path missing")?);
+            if args[0] == "escaped-tree" {
+                command
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+            }
+            let mut child = command.spawn()?;
+            if args[0] == "escaped-tree" {
+                println!("{}", child.id());
+            }
             std::thread::sleep(Duration::from_secs(1));
             // Intentionally leave a bounded descendant behind; the monitor
             // must terminate it as part of handling the leader's exit.

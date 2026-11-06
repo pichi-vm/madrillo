@@ -95,7 +95,7 @@
     {
       "id": "C07",
       "behavior": "Workload descendants",
-      "criterion": "Force stop, leader exit, and timeout clean the supported workload tree; fork races, grandchildren, daemonization, and changed process groups are tested",
+      "criterion": "Force stop, leader exit, and timeout clean the supported workload scope; fork races and grandchildren are tested on every host. Linux/Windows cover changed groups and daemonization. macOS covers descendants remaining in the managed workload process group; escape tests demonstrate the documented boundary",
       "status": "pending",
       "tests": [],
       "evidence": [],

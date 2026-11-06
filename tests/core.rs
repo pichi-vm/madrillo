@@ -107,6 +107,12 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
     let heartbeat = root.path().join("heartbeat");
     let result = run(root.path(), "tree", &[], &[heartbeat.as_os_str()])?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
+    #[cfg(target_os = "macos")]
+    assert_eq!(
+        result.cleanup,
+        madrillo::CleanupResult::Complete,
+        "{result:?}"
+    );
     let before = fs::read(&heartbeat)?;
     assert!(!before.is_empty());
     std::thread::sleep(Duration::from_millis(150));
@@ -114,6 +120,101 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
         fs::read(heartbeat)?,
         before,
         "descendant survived leader cleanup"
+    );
+    Ok(())
+}
+
+#[test]
+fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn std::error::Error>>
+{
+    for terminal in [false, true] {
+        for mode in ["deep-tree", "waiting-tree", "racing-tree"] {
+            let root = tempfile::tempdir()?;
+            let heartbeat = root.path().join("heartbeat");
+            let mut flags = Vec::new();
+            if terminal {
+                flags.push("--terminal");
+            }
+            if mode != "deep-tree" {
+                flags.extend(["--timeout", "1"]);
+            }
+            let result = run(root.path(), mode, &flags, &[heartbeat.as_os_str()])?;
+            assert_eq!(
+                result.cause,
+                if mode == "deep-tree" {
+                    CompletionCause::LeaderExit
+                } else {
+                    CompletionCause::TimedOut
+                },
+                "{mode}: {result:?}"
+            );
+            #[cfg(target_os = "macos")]
+            assert_eq!(
+                result.cleanup,
+                madrillo::CleanupResult::Complete,
+                "{mode}: {result:?}"
+            );
+            let before = fs::read(&heartbeat)?;
+            assert!(!before.is_empty(), "{mode} did not start its descendants");
+            std::thread::sleep(Duration::from_millis(150));
+            assert_eq!(
+                fs::read(heartbeat)?,
+                before,
+                "{mode} descendant survived cleanup"
+            );
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn escaped_session_is_outside_the_documented_macos_scope() -> Result<(), Box<dyn std::error::Error>>
+{
+    use nix::sys::{
+        event::{EvFlags, EventFilter, FilterFlag, KEvent, Kqueue},
+        time::TimeSpec,
+    };
+    let root = tempfile::tempdir()?;
+    let heartbeat = root.path().join("heartbeat");
+    let result = run(root.path(), "escaped-tree", &[], &[heartbeat.as_os_str()])?;
+    let pid: usize =
+        std::str::from_utf8(&payload(&root.path().join("state/console.log"), b"stdout")?)?
+            .trim()
+            .parse()?;
+    let queue = Kqueue::new()?;
+    let event = KEvent::new(
+        pid,
+        EventFilter::EVFILT_PROC,
+        EvFlags::EV_ADD | EvFlags::EV_ONESHOT,
+        FilterFlag::NOTE_EXIT,
+        0,
+        0,
+    );
+    queue.kevent(&[event], &mut [], None)?;
+    let before = fs::read(&heartbeat)?;
+    std::thread::sleep(Duration::from_millis(150));
+    let after = fs::read(&heartbeat)?;
+    // Await the bounded fixture's natural exit before removing its files.
+    // Never kill an orphan using a numeric PID which might have been reused.
+    let mut events = [event];
+    assert_eq!(
+        queue.kevent(
+            &[],
+            &mut events,
+            Some(TimeSpec::from_duration(Duration::from_secs(20)))
+        )?,
+        1
+    );
+    assert!(events[0].fflags().contains(FilterFlag::NOTE_EXIT));
+    assert_eq!(
+        result.cleanup,
+        madrillo::CleanupResult::Complete,
+        "{result:?}"
+    );
+    assert!(
+        after.len() > before.len(),
+        "escaped helper was unexpectedly contained"
     );
     Ok(())
 }

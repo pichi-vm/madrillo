@@ -11,6 +11,15 @@ Madrillo is one Rust package: a minimal shared-types library and a complete
 monitor executable. All owned Rust targets forbid unsafe code. Pichi and dillo
 are the first integration, while the monitor remains independent of VM APIs.
 
+On macOS, Madrillo manages the workload process group it creates. Children and
+grandchildren must remain in that group for Madrillo to guarantee their cleanup
+after leader exit, forced stop or timeout. A program that creates another group
+or session owns shutdown of the processes it moves there. Interactive shells
+often create separate job-control groups, so terminal support does not extend
+this cleanup guarantee. Dillo keeps its helpers in the managed group; any
+deliberate exception remains Dillo's responsibility. This is the approved
+conmon process-group contract.
+
 `--capture NAME RESOURCE` transfers an inherited pipe read end to the monitor.
 It records raw bytes in `STATE/stream-NAME.log`; clients can select `NAME` in
 their attachment. The caller separately passes the write end to the workload
