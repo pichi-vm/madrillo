@@ -75,3 +75,20 @@ full-exit-code tests separately require unavailable evidence when no OOM source
 exists; an exit code or signal alone cannot satisfy the requirement. The full
 Linux runner needs the same QEMU/cpio/kernel-download prerequisites as native
 qualification CI; their absence fails the case instead of skipping v1.
+
+C21 is ready to execute with separate permitted and denied Linux OOM-adjustment
+cases. Each checks the live monitor, workload, and exit-helper scores in both
+pipe and terminal modes. The denied case requires the retained warning; the
+permitted case requires protection without that warning. A case cannot accept
+whichever branch happens to occur. macOS and Windows have no Linux OOM-score
+mechanism; their native launch tests verify operation without that facility.
+
+C23 is ready to execute on all three hosts. The exit helper sees the retained
+workload result and receives literal native arguments, including non-Unicode
+values. The success case checks the requested delay. Nonzero helper exit and
+failure to spawn the helper leave the workload's exit and logs intact. Existing
+reservation and capture fixtures require release before the helper runs; Linux
+also checks restoration of the inherited OOM score. Source review confirms
+connections close before the helper starts and workload activation/notification
+environment variables are removed. The helper cannot substitute its result for
+the already-published workload result.

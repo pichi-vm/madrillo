@@ -300,8 +300,12 @@
       "id": "C21",
       "behavior": "Monitor OOM protection",
       "criterion": "Attempt permitted protection; failure visible; protection not inherited by workload or exit helper",
-      "status": "pending",
-      "tests": [],
+      "status": "ready",
+      "tests": [
+        "linux-oom-protection-denied",
+        "linux-oom-protection-permitted",
+        "current-tests"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -328,9 +332,10 @@
       "id": "C23",
       "behavior": "Exit command",
       "criterion": "Native command/args/delay, no shell, no resource leaks; caller policy independent of original CLI; failure does not replace workload exit",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "linux-oom-protection-permitted"
       ],
       "evidence": [],
       "hosts": [
@@ -516,7 +521,9 @@
         "test native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes ... ok",
         "test spawn_failure_is_retained_without_fake_success ... ok",
         "test detach_releases_writer_without_closing_child_input ... ok",
-        "test draining_viewer_survives_a_large_startup_burst ... ok"
+        "test draining_viewer_survives_a_large_startup_burst ... ok",
+        "test missing_exit_command_preserves_the_retained_workload_result ... ok",
+        "test capture_releases_a_still_open_pipe_before_invoking_the_hook ... ok"
       ]
     },
     {
@@ -639,12 +646,51 @@
       "success_markers": [
         "test full_windows_exit_bits_survive_pipe_and_terminal_supervision ... ok"
       ]
+    },
+    {
+      "id": "linux-oom-protection-denied",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_oom_adjust.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture",
+        "--expect",
+        "denied"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "Native pipe/terminal OOM protection denied: workload and exit-helper restoration passed"
+      ]
+    },
+    {
+      "id": "linux-oom-protection-permitted",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "python3",
+        "tools/check_oom_adjust.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture",
+        "--expect",
+        "protected"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "Native pipe/terminal OOM protection protected: workload and exit-helper restoration passed"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "a2489707e6bd7494983265a759ba8fb853aedbc4"
+      "revision": "87d68d311d0aa3b832b14c5c845fdb15f7289b7c"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

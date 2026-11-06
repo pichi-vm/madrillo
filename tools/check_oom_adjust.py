@@ -9,7 +9,7 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument("monitor", type=Path)
 parser.add_argument("fixture", type=Path)
-parser.add_argument("--require-protected", action="store_true")
+parser.add_argument("--expect", choices=("protected", "denied"), required=True)
 args = parser.parse_args()
 monitor, fixture = args.monitor.resolve(), args.fixture.resolve()
 for terminal in (False, True):
@@ -30,7 +30,7 @@ for terminal in (False, True):
         warnings = "\n".join(result["monitor_warnings"])
         assert scores["workload"] == 200, scores
         assert int((state / "hook-oom-score").read_text()) == 200
-        if args.require_protected or scores["monitor"] == -1000:
+        if args.expect == "protected":
             assert scores["monitor"] == -1000, (scores, completed.stderr)
             assert "OOM protection unavailable" not in warnings, result
         else:
@@ -38,4 +38,4 @@ for terminal in (False, True):
             assert "OOM protection unavailable" in warnings, result
         assert result["leader"] == {"type": "exit", "code": 37}, result
         assert not result["monitor_errors"], result
-print("Native pipe/terminal OOM protection, workload and exit-helper restoration passed")
+print(f"Native pipe/terminal OOM protection {args.expect}: workload and exit-helper restoration passed")

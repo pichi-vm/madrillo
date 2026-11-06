@@ -433,6 +433,16 @@ fn invalid_initial_resources_are_rejected_before_state_creation()
 #[test]
 fn exit_command_observes_final_result_and_preserves_native_arguments()
 -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(unix)]
+    let native = {
+        use std::os::unix::ffi::OsStringExt;
+        std::ffi::OsString::from_vec(b"native-\xff".to_vec())
+    };
+    #[cfg(windows)]
+    let native = {
+        use std::os::windows::ffi::OsStringExt;
+        std::ffi::OsString::from_wide(&[b'n' as u16, 0xd800])
+    };
     for hook_status in [0, 73] {
         let root = tempfile::tempdir()?;
         let state = root.path().join("state");
@@ -451,6 +461,7 @@ fn exit_command_observes_final_result_and_preserves_native_arguments()
             marker.as_os_str(),
             OsStr::new(&code),
             argument,
+            &native,
         ] {
             command.arg("--exit-command-arg").arg(arg);
         }
@@ -493,8 +504,43 @@ fn exit_command_observes_final_result_and_preserves_native_arguments()
                 .collect::<Vec<_>>()
         };
         expected.push(b'\n');
+        #[cfg(unix)]
+        expected.extend_from_slice(native.as_encoded_bytes());
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStrExt;
+            expected.extend(native.encode_wide().flat_map(u16::to_le_bytes));
+        }
+        expected.push(b'\n');
         assert_eq!(fs::read(marker)?, expected);
     }
+    Ok(())
+}
+
+#[test]
+fn missing_exit_command_preserves_the_retained_workload_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let state = root.path().join("state");
+    let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+        .arg("--state-dir")
+        .arg(&state)
+        .arg("--exit-command")
+        .arg(root.path().join("missing-exit-command"))
+        .arg("--")
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("emit")
+        .output()?;
+    assert!(!output.status.success());
+    assert!(!output.stderr.is_empty());
+    let result: Completion = serde_json::from_slice(&fs::read(state.join("result.json"))?)?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+    assert_eq!(result.cause, CompletionCause::LeaderExit);
+    assert!(result.monitor_errors.is_empty(), "{result:?}");
+    assert_eq!(
+        payload(&state.join("console.log"), b"stderr")?,
+        b"diagnostic\n"
+    );
     Ok(())
 }
 

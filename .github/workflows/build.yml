@@ -65,8 +65,8 @@ jobs:
       - name: Monitor OOM protection and workload restoration
         if: runner.os == 'Linux'
         run: |
-          python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture
-          sudo python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture --require-protected
+          python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture --expect denied
+          sudo python3 tools/check_oom_adjust.py target/debug/madrillo target/debug/madrillo-fixture --expect protected
       - name: Named socket activation with actual child PID
         if: runner.os == 'Linux'
         run: python3 tools/check_activation.py target/debug/madrillo target/debug/madrillo-fixture
