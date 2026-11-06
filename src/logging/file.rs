@@ -62,6 +62,34 @@ impl FileLog {
                 ));
             }
         }
+        #[cfg(windows)]
+        {
+            use win_custody::{ObjectSecurityDescriptor, OwnedSid};
+            let descriptor = ObjectSecurityDescriptor::query_kernel_object(&directory)?;
+            let user = OwnedSid::from_string(&win_custody::current_user_sid_string()?)?;
+            let system = OwnedSid::from_string("S-1-5-18")?;
+            let administrators = OwnedSid::from_string("S-1-5-32-544")?;
+            let creator = OwnedSid::from_string("S-1-3-0")?;
+            let trusted = [&user, &system, &administrators];
+            let owner = descriptor.owner().map_err(io::Error::other)?;
+            let acl = descriptor.dacl().map_err(io::Error::other)?;
+            // GENERIC_READ | GENERIC_EXECUTE | FILE_GENERIC_READ |
+            // FILE_GENERIC_EXECUTE. Other accounts may read logs, but cannot
+            // replace entries, modify inherited files or change permissions.
+            const READ_ONLY: u32 = 0xa012_00a9;
+            if !trusted.iter().any(|sid| owner.matches(sid))
+                || !acl.allowed_aces().all(|ace| {
+                    ace.mask() & !READ_ONLY == 0
+                        || trusted.iter().any(|sid| ace.trustee_matches(sid))
+                        || (ace.trustee_matches(&creator) && ace.flags() & 0x08 != 0)
+                })
+            {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    "log directory has untrusted ownership or grants modification to another account",
+                ));
+            }
+        }
         let file = Self::open_file(&directory, &name, false)?;
         let size = file.metadata()?.len();
         Ok(Self {

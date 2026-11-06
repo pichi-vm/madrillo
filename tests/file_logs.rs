@@ -159,6 +159,46 @@ fn failed_rotation_preserves_active_log_and_removes_prepared_file()
 
 #[cfg(windows)]
 #[test]
+fn windows_log_directories_allow_public_read_but_reject_modification()
+-> Result<(), Box<dyn std::error::Error>> {
+    let sid = win_custody::current_user_sid_string()?;
+    let root = tempfile::tempdir()?;
+    win_custody::SecurityDescriptor::from_sddl(&format!(
+        "D:P(A;OICI;FA;;;{sid})(A;OICI;FRFX;;;WD)"
+    ))?
+    .apply_to_tree(root.path(), true)?;
+    let path = root.path().join("readable.log");
+    let mut log = FileLog::open(&path, Limits::default(), true, &[])?;
+    log.write_raw(b"readable")?;
+    log.sync()?;
+    assert_eq!(fs::read(&path)?, b"readable");
+    drop(log);
+    // Full/write access, changing the DACL/owner, or deleting children can each
+    // subvert a log path. An allowlist does not override the ownership check.
+    for access in ["FA", "FW", "0x00040000", "0x00080000", "0x00000040"] {
+        let root = tempfile::tempdir()?;
+        let existing = root.path().join("existing");
+        fs::write(&existing, b"preserved")?;
+        win_custody::SecurityDescriptor::from_sddl(&format!(
+            "D:P(A;OICI;FA;;;{sid})(A;OICI;{access};;;WD)"
+        ))?
+        .apply_to_tree(root.path(), true)?;
+        for allowlist in [Vec::new(), vec![root.path().to_owned()]] {
+            for path in [&existing, &root.path().join("new")] {
+                let error = FileLog::open(path, Limits::default(), true, &allowlist)
+                    .err()
+                    .ok_or("writable-by-others directory was accepted")?;
+                assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+            }
+        }
+        assert_eq!(fs::read(existing)?, b"preserved");
+        assert!(!root.path().join("new").exists());
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+#[test]
 fn hard_links_are_rejected_on_windows() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let target = root.path().join("target");

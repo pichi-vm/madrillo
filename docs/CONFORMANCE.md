@@ -168,3 +168,13 @@ deadline. The result must explicitly report truncated/incomplete logging.
 The ordinary blocked diagnostic-pipe test runs natively on every host and
 requires monitor exit as well as retained timeout/flush errors. These additions
 do not promote the still-pending pressure/durability requirements.
+
+C13's Windows path checks inspect the held directory handle's owner and DACL
+before opening or creating a log. Only the invoking user, SYSTEM and
+Administrators may receive modification rights; other accounts may receive
+read/execute rights. The mask follows Microsoft's
+[file-access mappings](https://learn.microsoft.com/en-us/windows/win32/fileio/file-security-and-access-rights)
+and [generic-access bits](https://learn.microsoft.com/en-us/windows/win32/secauthz/generic-access-rights).
+Native tests require public read access to work and reject write, delete-child,
+ownership-change and DACL-change grants, with and without an allowlist. Existing
+files must remain unchanged and rejected new files must not be created.
