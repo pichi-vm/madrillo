@@ -68,7 +68,10 @@ inheritable access to the invoking user (SYSTEM/Administrators are also
 trusted). Madrillo validates that parent before creating state; it rejects a
 shared parent instead of exposing retained data during an ACL update.
 
-The caller must give the monitor an independent native lifetime. On Windows,
+The caller must give the monitor an independent native lifetime: a fresh session
+on Unix, or separation from the caller's console and Job on Windows. Captured
+pipe and terminal workloads can then outlive caller exit, crash and terminal
+closure, with later clients reconnecting to the monitor. On Windows,
 Pichi requests `CREATE_BREAKAWAY_FROM_JOB`; a containing Job must permit that
 operation. A launch that is denied does not fall back to keeping the monitor
 inside the caller's Job. Native caller qualification exercises both denied
@@ -112,6 +115,10 @@ configured separately by `--log-path`; workload bytes are never sent through
 the diagnostic logger.
 With passthrough, both monitor diagnostics and workload stderr use the caller's
 stderr; `--log-level error` suppresses non-error monitor messages there.
+Passthrough gives the workload the caller's native stdio resources directly.
+Their lifetime remains with the actual pipe or terminal owner; closing them can
+end workload I/O or terminate the workload. Madrillo does not capture or restore
+those streams for later attachment.
 
 Diagnostics use one worker with 32 queued messages, each limited to 2 KiB plus
 a truncation marker. A blocked sink cannot stop supervision. After workload

@@ -195,6 +195,10 @@ fn caller_loss_preserves_pipe_and_terminal() -> Result<()> {
                 }
                 // Closing the master tests actual terminal loss. Killing the
                 // whole caller group verifies that the monitor left that scope.
+                assert!(
+                    caller.process.try_wait()?.is_none(),
+                    "caller exited before {loss}"
+                );
                 match loss {
                     "exit" => writer.write_all(format!("exit{newline}").as_bytes())?,
                     "crash" => {
