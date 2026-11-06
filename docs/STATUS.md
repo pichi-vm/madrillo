@@ -29,9 +29,26 @@ a preferred bus is absent or full, rejects exhausted capacity, and pins Dillo
 `88d507c` across Cargo and appliance packaging. Both x86-64 and ARM64 metadata
 fixtures execute locally, along with build-port handle preservation. Linux
 caller qualification passes 149 unit tests, 37 CLI tests and both explicit
-native launch/crash cases; packaging and formatting pass. Native macOS and
-Windows retesting is pending. Full native VM/build qualification remains
-incomplete; the aligned pins alone do not establish it.
+native launch/crash cases; packaging and formatting pass. [Native caller qualification also passes on Linux, macOS and Windows
+MSVC](https://github.com/pichi-vm/madrillo/actions/runs/42188005874).
+
+Pichi `36d9e608` updates timeout cleanup to stop the independent workloads by
+retained ID and require complete cleanup. The real-process regression covers
+both foreground and already-detached clients. The official-image build and
+committed-submodule VM suite pass locally on Linux/KVM: guest-first build input,
+OCI output import, guest poweroff, and expected submodule rejection cases all
+execute. These do not complete the full native VM/build matrix.
+
+Pichi now provides the Cargo runner used for native Windows test execution
+outside restrictive runner/Cargo Jobs. Madrillo's focused qualification reuses
+it, removing the duplicate Windows host script. Native retesting is pending.
+The negative denied-breakaway fixture still runs inside Cargo's restrictive Job.
+
+The Linux ARM64 Dillo job reached `ares-3` but failed before VM tests because
+the workflow invoked absent `sudo` unconditionally. The workflow now uses
+preconfigured KVM access and hugepages when sufficient; privileged changes are
+attempted only when necessary. Its shell syntax and no-change path pass locally.
+Native ARM64 and macOS VM qualification remain incomplete.
 
 Console resize now has a direct Pichi–Dillo implementation. Pichi sends the
 interactive terminal's dimensions at startup, on change, and after reattachment;

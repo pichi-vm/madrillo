@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import platform
+import shlex
 import subprocess
 import sys
 
@@ -37,6 +38,7 @@ def main():
         "test cmd::workload::record::tests::missing_records_are_read_only_and_partial_publication_fails_closed ... ok",
         "test cmd::workload::record::tests::image_gc_preserves_pins_and_guest_selected_build_inputs ... ok",
         "test detached_storage_stays_reserved_until_workload_exit ... ok",
+        "test vm_timeout_cleanup_stops_workloads_after_client_exit ... ok",
         "test cmd::workload::resize::tests::resize_reconnects_after_receiver_consumes_each_update ... ok",
         "test cmd::device_buses::tests::both_pmi_architectures_supply_declared_capacity ... ok",
         "test cmd::device_buses::tests::preferences_fall_back_without_creating_slots ... ok",
@@ -46,29 +48,36 @@ def main():
     native = ["native_monitor_launch_and_async_control",
               "monitor_crash_preserves_unknown_state_and_cleanup_inputs"]
     crash = "native monitor crash: unknown state and cleanup inputs retained"
+    cargo = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "pichi"]
     if os.name == "nt":
-        script = Path(__file__).with_name("check_windows_caller.ps1").resolve()
-        run(["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script),
-             "-PichiDirectory", str(pichi)], pichi, environment, markers + [
-                *(f"cmd::workload::tests::{name}" for name in native),
-                "1 passed; 0 failed; 0 ignored;",
-                crash, "native Windows caller loss passed (console=false)",
-                "native Windows caller loss passed (console=true)",
-                "native Windows CLI terminal: run, input, resize, detach, reattach, detached start and stop passed"])
+        script = pichi / ".github/scripts/windows-test-runner.ps1"
+        assert script.is_file(), "native Windows test runner is missing"
+        environment["CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER"] = shlex.join([
+            "pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)])
     else:
-        cargo = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "pichi"]
-        run([*cargo, "--lib", "--test", "cmd_workload", "--test", "cmd_build",
-             "--test", "cmd_run", "--test", "cmd_rmi"], pichi, environment, markers + [
-                "test caller_group_loss_preserves_workload_and_reconnection ... ok",
-                "test terminal_restoration_and_hangup_preserve_workload ... ok",
-                "test detached_exit_removes_the_child_resize_socket ... ok",
-                "test detached_launch_is_discoverable_and_later_wait_reads_retained_exit ... ok",
-                "test build_port_remains_direct_and_guest_first_through_monitor_launch ... ok"])
-        for name in native:
-            test = "cmd::workload::tests::" + name
-            run([*cargo, "--lib", test, "--", "--exact", "--ignored", "--nocapture"],
-                pichi, environment, [test, "1 passed; 0 failed; 0 ignored;"] +
-                ([crash] if name.startswith("monitor_crash") else []))
+        markers += [
+            "test caller_group_loss_preserves_workload_and_reconnection ... ok",
+            "test terminal_restoration_and_hangup_preserve_workload ... ok",
+            "test detached_exit_removes_the_child_resize_socket ... ok",
+            "test detached_launch_is_discoverable_and_later_wait_reads_retained_exit ... ok",
+            "test build_port_remains_direct_and_guest_first_through_monitor_launch ... ok"]
+    run([*cargo, "--lib", "--test", "cmd_workload", "--test", "cmd_build",
+         "--test", "cmd_run", "--test", "cmd_rmi"], pichi, environment, markers)
+    for name in native:
+        test = "cmd::workload::tests::" + name
+        run([*cargo, "--lib", test, "--", "--exact", "--ignored", "--nocapture"],
+            pichi, environment, [test, "1 passed; 0 failed; 0 ignored;"] +
+            ([crash] if name.startswith("monitor_crash") else []))
+    if os.name == "nt":
+        for target, test, evidence in [
+            (["--lib"], "cmd::workload::tests::job::caller_loss_preserves_workload",
+             ["native Windows caller loss passed (console=false)",
+              "native Windows caller loss passed (console=true)"]),
+            (["--test", "cmd_run"], "windows_terminal::interactive_resize_input_and_reattach",
+             ["native Windows CLI terminal: run, input, resize, detach, reattach, detached start and stop passed"]),
+        ]:
+            run([*cargo, *target, test, "--", "--exact", "--ignored", "--nocapture"],
+                pichi, environment, [test, "1 passed; 0 failed; 0 ignored;", *evidence])
     print("native Pichi caller and crash reconciliation passed", flush=True)
 
 
