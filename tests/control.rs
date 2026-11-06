@@ -578,6 +578,40 @@ fn detach_releases_writer_without_closing_child_input() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn administrative_eof_does_not_require_taking_the_active_writer()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut monitor = Monitor::spawn("echo")?;
+    let mut writer = monitor.connect()?;
+    writer.attach(true)?;
+    writer.send(ClientMessage::Input {
+        bytes: b"accepted\n".to_vec(),
+    })?;
+    assert!(
+        matches!(writer.next()?, ServerMessage::Output { bytes, .. } if bytes == b"accepted\n")
+    );
+    let mut control = monitor.connect()?;
+    control.send(ClientMessage::Input {
+        bytes: b"unowned data".to_vec(),
+    })?;
+    assert!(matches!(
+        control.next()?,
+        ServerMessage::Error {
+            code: ErrorCode::InputOwned,
+            ..
+        }
+    ));
+    control.send(ClientMessage::CloseInput)?;
+    assert!(
+        matches!(control.next()?, ServerMessage::Completed { result }
+        if result.leader == (madrillo::LeaderResult::Exit { code: 0 })
+            && result.cause == CompletionCause::LeaderExit)
+    );
+    // Keep the original data owner connected throughout the EOF transition.
+    assert!(matches!(writer.next()?, ServerMessage::Completed { .. }));
+    monitor.wait()
+}
+
+#[test]
 fn malformed_client_does_not_stop_monitor_or_other_clients()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut monitor = Monitor::spawn("sleep")?;

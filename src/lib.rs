@@ -17,12 +17,22 @@ pub struct Request {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ClientMessage {
-    Attach { input: bool, streams: Vec<String> },
+    Attach {
+        input: bool,
+        streams: Vec<String>,
+    },
     Start,
-    Input { bytes: Vec<u8> },
+    Input {
+        bytes: Vec<u8>,
+    },
     InputEnd,
+    /// Administrative pipe EOF after accepted input drains. Any authenticated
+    /// peer may request it; terminal input has no half-close operation.
     CloseInput,
-    Resize { rows: u16, cols: u16 },
+    Resize {
+        rows: u16,
+        cols: u16,
+    },
     ReopenLogs,
     Wait,
     Terminate,

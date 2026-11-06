@@ -39,6 +39,12 @@ monitor's user before accepting requests or delivering output. This also
 protects custom socket paths on hosts that do not enforce socket permission
 bits. An inherited initial connection remains a caller-transferred capability.
 
+`CloseInput` is an administrative request available to any authenticated peer,
+like `Terminate`. It closes pipe input after already accepted bytes drain,
+even when an attachment still owns input. Only the owner may send input bytes;
+detach and ordinary client EOF still release ownership without closing the
+workload's input. Terminal input cannot be half-closed.
+
 Monitor diagnostics go to stderr. `--log-level` defaults to `warn`, with
 `error`, `info`, `debug`, and `trace` also supported. Names are case-insensitive;
 conmon's `warning`, `fatal`, and `panic` aliases are accepted. Unix `--syslog`

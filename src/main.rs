@@ -808,8 +808,10 @@ fn service(
                 ErrorCode::Unsupported,
                 "a terminal has no input half-close; send terminal EOF bytes instead",
             )?,
-            ClientMessage::CloseInput if connections.owns_input(id) => input.close_after_flush(),
-            ClientMessage::Input { .. } | ClientMessage::CloseInput => connections.error(
+            // Closing pipe input is administrative control, like Terminate.
+            // All peers are authenticated; data writes still require ownership.
+            ClientMessage::CloseInput => input.close_after_flush(),
+            ClientMessage::Input { .. } => connections.error(
                 id,
                 ErrorCode::InputOwned,
                 "attach with input ownership first",
