@@ -261,6 +261,45 @@ fn terminal_size_resize_reattach_and_native_exit() -> Result<(), Box<dyn std::er
 
 #[cfg(unix)]
 #[test]
+fn stopped_workload_can_resume_without_being_finalized() -> Result<(), Box<dyn std::error::Error>> {
+    use nix::{
+        sys::signal::{Signal, kill},
+        unistd::Pid,
+    };
+    let (mut monitor, mut client) = Monitor::initial_with_flags("echo", false, &["--stdin"])?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    let ServerMessage::Started { leader_pid } = client.next()? else {
+        return Err("workload was not started".into());
+    };
+    let pid = Pid::from_raw(i32::try_from(leader_pid)?);
+    client.send(ClientMessage::Input {
+        bytes: b"before stop\n".to_vec(),
+    })?;
+    client.output_until(b"before stop\n")?;
+    kill(pid, Signal::SIGSTOP)?;
+    std::thread::sleep(Duration::from_millis(150));
+    assert!(
+        monitor.child.try_wait()?.is_none(),
+        "a stopped workload is still alive"
+    );
+    assert!(!monitor._root.path().join("state/result.json").exists());
+    kill(pid, Signal::SIGCONT)?;
+    client.send(ClientMessage::Input {
+        bytes: b"after resume\n".to_vec(),
+    })?;
+    client.output_until(b"after resume\n")?;
+    client.send(ClientMessage::CloseInput)?;
+    assert!(matches!(
+        client.next()?,
+        ServerMessage::Completed { result }
+            if result.leader == madrillo::LeaderResult::Exit { code: 0 }
+                && result.cause == CompletionCause::LeaderExit
+    ));
+    monitor.wait()
+}
+
+#[cfg(unix)]
+#[test]
 fn monitor_sigterm_is_forwarded_and_result_is_finalized() -> Result<(), Box<dyn std::error::Error>>
 {
     let (mut monitor, mut client) = Monitor::initial("sleep", false)?;
