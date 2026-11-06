@@ -190,6 +190,10 @@ impl Workload {
             let pid = i32::try_from(self.child.id()).map_err(io::Error::other)?;
             match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
                 Ok(()) | Err(Errno::ESRCH) => Ok(()),
+                // XNU also returns EPERM for a zombie-only group. Final
+                // cleanup still requires observing that the group is empty.
+                #[cfg(target_os = "macos")]
+                Err(Errno::EPERM) => Ok(()),
                 Err(error) => Err(error.into()),
             }
         }
@@ -334,7 +338,10 @@ fn wait_group_empty(leader: u32) -> io::Result<()> {
         // The macOS contract covers members of this group, not escaped jobs.
         match killpg(group, None) {
             Err(Errno::ESRCH) => return Ok(()),
-            Err(Errno::EINTR) => {}
+            // XNU can report EPERM for an existing group containing only
+            // zombies. Keep observing until the group disappears; neither
+            // permission denial nor a zombie-only group proves completion.
+            Err(Errno::EINTR | Errno::EPERM) => {}
             Err(error) => return Err(error.into()),
             Ok(()) => {}
         }

@@ -762,3 +762,14 @@ Connections now release input ownership when EOF is observed, before processing
 attachments accepted in that polling turn. A deterministic socket regression
 passes locally, and the existing detach test now reconnects without its masking
 delay. Native caller retesting is pending.
+
+Linux and macOS caller-loss/reconnection now pass in
+[run 42158301121](https://github.com/pichi-vm/madrillo/actions/runs/42158301121).
+The new native macOS force fixture exposed `EPERM` while observing a dying
+process group in [run 42158398325](https://github.com/pichi-vm/madrillo/actions/runs/42158398325).
+[XNU's killpg1 implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_sig.c)
+returns that error when the group exists but its iterator finds no eligible
+non-zombie member. Force/observation now defer that ambiguous result to the
+bounded group-disappearance check. EPERM never proves successful cleanup:
+only ESRCH does, and a group remaining after the deadline is incomplete.
+Native qualification of this adjustment is pending.

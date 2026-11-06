@@ -70,6 +70,12 @@ fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::er
         let result = run(root.path(), "emit", &[], &[])?;
         assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
         assert_eq!(result.cause, CompletionCause::LeaderExit);
+        #[cfg(target_os = "macos")]
+        assert_eq!(
+            result.cleanup,
+            madrillo::CleanupResult::Complete,
+            "{result:?}"
+        );
         assert!(result.log_errors.is_empty(), "{:?}", result.log_errors);
         assert!(!result.output_truncated);
         assert_eq!(
