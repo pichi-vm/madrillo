@@ -182,14 +182,23 @@ checks the monitor's exit. This measures bounded supervision and publication;
 the tracer can postpone OS thread exit, so its lifetime is not the shutdown
 deadline. The result must explicitly report truncated/incomplete logging.
 The ordinary blocked diagnostic-pipe test runs natively on every host and
-requires monitor exit as well as retained timeout/flush errors. These additions
-do not promote the still-pending pressure/durability requirements.
+requires monitor exit as well as retained timeout/flush errors. C14 is ready to
+execute with those cases, stalled-viewer isolation, explicit client-capacity
+rejection and blocked-child-input force/timeout coverage. Source review bounds
+capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes,
+clients to 32 and each client's pending delivery to 1 MiB. Blocking log work has
+one worker; capture workers and Windows final-delivery workers have fixed bounds.
+This is backpressure with explicit failures, not a promise to retain unlimited
+output from a stalled sink. C15 remains pending its complete durability review.
 
 The storage suite also injects EIO into the exact state directory's post-rename
 fsync. The monitor must fail visibly without sending Completed or running the
 exit command, while preserving the already published leader status. This differs
 from a full-filesystem failure before publication, which must leave no result.
 Neither record presence nor missing acknowledgement proves an exit hook ran.
+An additional native fixture places an existing file or nonempty directory at
+the result path before completion. Publication must fail without overwriting it,
+leaving a temporary result behind, acknowledging completion or invoking a hook.
 
 C25 is ready to execute. Positive markers cover version, invalid lengths and
 encoding, unknown messages, truncated frames, bounded outgoing encoding, and

@@ -879,6 +879,74 @@ fn malformed_client_does_not_stop_monitor_or_other_clients()
 }
 
 #[test]
+fn failed_result_publication_preserves_collision_and_skips_callback()
+-> Result<(), Box<dyn std::error::Error>> {
+    for directory in [false, true] {
+        let callback_root = tempfile::tempdir()?;
+        let marker = callback_root.path().join("callback");
+        let (mut monitor, mut client) = Monitor::initial_with_flags(
+            "echo",
+            false,
+            &[
+                "--stdin",
+                "--exit-command",
+                env!("CARGO_BIN_EXE_madrillo-fixture"),
+                "--exit-command-arg",
+                "touch",
+                "--exit-command-arg",
+                marker.to_str().ok_or("test path is not UTF-8")?,
+            ],
+        )?;
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+        let state = monitor._root.path().join("state");
+        let destination = state.join("result.json");
+        let sentinel = if directory {
+            std::fs::create_dir(&destination)?;
+            destination.join("sentinel")
+        } else {
+            destination
+        };
+        std::fs::write(&sentinel, b"preexisting result must survive")?;
+        client.send(ClientMessage::CloseInput)?;
+        let deadline = Instant::now() + Duration::from_secs(8);
+        loop {
+            if let Some(status) = monitor.child.try_wait()? {
+                assert!(!status.success(), "failed publication reported success");
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("failed publication held the monitor alive".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let error = client
+            .next()
+            .err()
+            .ok_or("failed publication acknowledged completion")?;
+        assert!(
+            error.to_string() == "control EOF before expected response"
+                || error.downcast_ref::<io::Error>().is_some_and(|error| {
+                    error.kind() == io::ErrorKind::BrokenPipe
+                        || error.kind() == io::ErrorKind::ConnectionReset
+                }),
+            "unexpected final channel error: {error}"
+        );
+        assert_eq!(std::fs::read(sentinel)?, b"preexisting result must survive");
+        assert!(
+            !marker.exists(),
+            "callback ran without retained publication"
+        );
+        let mut names = std::fs::read_dir(state)?
+            .map(|entry| entry.map(|entry| entry.file_name()))
+            .collect::<io::Result<Vec<_>>>()?;
+        names.sort();
+        assert_eq!(names, ["console.log", "result.json"]);
+    }
+    Ok(())
+}
+
+#[test]
 fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std::error::Error>> {
     for force in [false, true] {
         let mut monitor = Monitor::spawn("sleep")?;

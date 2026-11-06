@@ -217,7 +217,7 @@
       "id": "C14",
       "behavior": "Pressure and failures",
       "criterion": "Bounded queues/client count; sink backpressure and write failures explicit; stalled viewer isolated; control/deadline remains responsive",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
         "linux-storage-faults"
@@ -592,7 +592,8 @@
         "test version_and_unknown_messages_are_rejected ... ok",
         "test response_is_framed_and_oversize_never_emits_a_prefix ... ok",
         "test thresholds_preserve_workload_logs_and_aliases ... ok",
-        "test fatal_errors_survive_threshold_and_invalid_levels_launch_nothing ... ok"
+        "test fatal_errors_survive_threshold_and_invalid_levels_launch_nothing ... ok",
+        "test failed_result_publication_preserves_collision_and_skips_callback ... ok"
       ]
     },
     {
@@ -1156,7 +1157,7 @@
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "c212e1ae5fe4290abfd7252c189b640f2c24b725"
+      "revision": "8f9db790366f08bd3be9a6df199ebf0cc1e6e020"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
