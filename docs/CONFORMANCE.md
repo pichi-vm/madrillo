@@ -157,6 +157,10 @@ or an exact kernel exit timestamp. A previously observed exit time survives
 later cleanup errors; an unobserved exit has timestamp zero. Native core cases
 also check that known outcomes carry a timestamp by completion. C08 remains
 pending while the broader reaping/result review is incomplete.
+A second fault delays descendant-cleanup completion beyond the monitor's reap
+deadline. The leader's observed status and timestamp must survive while cleanup
+remains explicitly incomplete; cleanup timeout must not turn a known exit into
+Unknown.
 
 C14/C15 include Linux write/fsync completion stalls, synchronization errors and
 opt-out, an isolated full filesystem, and failed result publication. During a
@@ -169,7 +173,7 @@ The ordinary blocked diagnostic-pipe test runs natively on every host and
 requires monitor exit as well as retained timeout/flush errors. These additions
 do not promote the still-pending pressure/durability requirements.
 
-C13's Windows path checks inspect the held directory handle's owner and DACL
+C13 is ready to execute. Its Windows path checks inspect the held directory handle's owner and DACL
 before opening or creating a log. Only the invoking user, SYSTEM and
 Administrators may receive modification rights; other accounts may receive
 read/execute rights. The mask follows Microsoft's

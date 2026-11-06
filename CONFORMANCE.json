@@ -194,7 +194,7 @@
       "id": "C13",
       "behavior": "Log controls",
       "criterion": "Size/global cumulative caps, truncation, rotation/backup count, external reopen, tags/labels, partial metadata, path protection",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
         "windows-log-directory-access",
@@ -967,9 +967,10 @@
         "tools/check_exit_time.py",
         "target/debug/madrillo"
       ],
-      "timeout": 30,
+      "timeout": 45,
       "success_markers": [
-        "Native exit observation passed: retained timestamp follows delayed termination"
+        "Native exit observation passed: retained timestamp follows delayed termination",
+        "Native leader preservation passed: descendant cleanup timeout retains known exit status and time"
       ]
     },
     {
@@ -1007,14 +1008,12 @@
         "--locked",
         "--all-features",
         "--test",
-        "file_logs",
-        "windows_log_directories_allow_public_read_but_reject_modification",
-        "--",
-        "--exact"
+        "file_logs"
       ],
       "timeout": 120,
       "success_markers": [
-        "test windows_log_directories_allow_public_read_but_reject_modification ... ok"
+        "test windows_log_directories_allow_public_read_but_reject_modification ... ok",
+        "test hard_links_are_rejected_on_windows ... ok"
       ]
     },
     {

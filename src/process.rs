@@ -266,6 +266,7 @@ impl Workload {
         use std::{sync::mpsc, thread, time::Duration};
         let known = self.observed.clone().unwrap_or(LeaderResult::Unknown);
         let known_exit_time = self.exited_at_unix_ms;
+        let (observed, observation) = mpsc::sync_channel(1);
         let (done, complete) = mpsc::sync_channel(1);
         let spawned = thread::Builder::new()
             .name("madrillo-reap".into())
@@ -277,22 +278,28 @@ impl Workload {
                         self.observed.clone().unwrap_or(LeaderResult::Unknown)
                     }
                 };
+                // Preserve leader status even when descendant cleanup stalls.
+                let _ = observed.send((leader.clone(), self.exited_at_unix_ms));
                 let cleanup = self.cleanup_result(errors);
                 let _ = done.send((leader, cleanup, self.oom(), self.exited_at_unix_ms));
             });
         match spawned {
             Ok(_) => match complete.recv_timeout(Duration::from_secs(5)) {
                 Ok(result) => result,
-                Err(error) => (
-                    known,
-                    CleanupResult::Incomplete {
-                        errors: vec![format!("workload reaping did not complete: {error}")],
-                    },
-                    OomEvidence::Unavailable {
-                        reason: "final workload observation timed out".into(),
-                    },
-                    known_exit_time,
-                ),
+                Err(error) => {
+                    let (known, known_exit_time) =
+                        observation.try_recv().unwrap_or((known, known_exit_time));
+                    (
+                        known,
+                        CleanupResult::Incomplete {
+                            errors: vec![format!("workload reaping did not complete: {error}")],
+                        },
+                        OomEvidence::Unavailable {
+                            reason: "final workload observation timed out".into(),
+                        },
+                        known_exit_time,
+                    )
+                }
             },
             Err(error) => (
                 known,
@@ -321,14 +328,16 @@ impl Workload {
             self.exited_at_unix_ms = crate::unix_ms();
         }
         self.observed = Some(leader.clone());
-        #[cfg(windows)]
-        if let WindowsChild::Pipe(child) = &mut self.child {
-            child.wait()?;
-        }
         Ok(leader)
     }
-    fn cleanup_result(&self, errors: Vec<String>) -> CleanupResult {
+    fn cleanup_result(&mut self, errors: Vec<String>) -> CleanupResult {
         let mut errors = errors;
+        #[cfg(windows)]
+        if let WindowsChild::Pipe(child) = &mut self.child
+            && let Err(error) = child.wait()
+        {
+            errors.push(format!("wait for workload Job: {error}"));
+        }
         #[cfg(windows)]
         if matches!(self.child, WindowsChild::Terminal(_)) {
             errors.push("ConPTY job termination was requested, but the dependency does not expose a job-empty observation".into());
