@@ -19,7 +19,7 @@ pub(crate) fn leader(root: &Path) -> Result<i32> {
         .stderr(Stdio::null())
         .spawn()?;
     let result = (|| -> Result<()> {
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + Duration::from_secs(30);
         loop {
             match io::stdout().write_all(b"alive\n") {
                 Ok(()) => {}

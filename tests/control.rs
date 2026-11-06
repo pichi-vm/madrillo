@@ -33,6 +33,7 @@ impl Monitor {
             &[env!("CARGO_BIN_EXE_madrillo-fixture"), mode],
             gated,
             flags,
+            5,
         )
     }
     #[cfg(unix)]
@@ -40,6 +41,7 @@ impl Monitor {
         workload: &[&str],
         gated: bool,
         flags: &[&str],
+        timeout: u64,
     ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
         use command_fds::{CommandFdExt, FdMapping};
         let root = tempfile::tempdir()?;
@@ -52,7 +54,8 @@ impl Monitor {
             .arg("--listen")
             .arg(&endpoint)
             .args(flags)
-            .args(["--control", "22", "--timeout", "5"]);
+            .args(["--control", "22", "--timeout"])
+            .arg(timeout.to_string());
         if gated {
             command.arg("--start-gated");
         }
@@ -84,6 +87,7 @@ impl Monitor {
         workload: &[&str],
         gated: bool,
         flags: &[&str],
+        timeout: u64,
     ) -> Result<(Self, Client), Box<dyn std::error::Error>> {
         use interprocess::os::windows::named_pipe::{
             DuplexPipeStream, PipeListenerOptions, pipe_mode::Bytes,
@@ -118,7 +122,8 @@ impl Monitor {
             .args(flags)
             .arg("--control")
             .arg_handle(&initial)?
-            .args(["--timeout", "5"]);
+            .arg("--timeout")
+            .arg(timeout.to_string());
         if gated {
             command.arg("--start-gated");
         }
@@ -534,6 +539,7 @@ fn interactive_shell_job_control_survives_detach() -> Result<(), Box<dyn std::er
         ],
         false,
         &["--terminal", "--stdin"],
+        5,
     )?;
     assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
     assert!(matches!(client.next()?, ServerMessage::Started { .. }));
@@ -591,8 +597,12 @@ fn interactive_shell_job_control_survives_detach() -> Result<(), Box<dyn std::er
 #[cfg(windows)]
 #[test]
 fn native_command_shell_interrupt_survives_detach() -> Result<(), Box<dyn std::error::Error>> {
-    let (mut monitor, mut client) =
-        Monitor::initial_command(&["cmd.exe", "/d", "/q"], false, &["--terminal", "--stdin"])?;
+    let (mut monitor, mut client) = Monitor::initial_command(
+        &["cmd.exe", "/d", "/q"],
+        false,
+        &["--terminal", "--stdin"],
+        5,
+    )?;
     assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
     assert!(matches!(client.next()?, ServerMessage::Started { .. }));
     client.send(ClientMessage::Input {
@@ -682,6 +692,7 @@ fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::e
                 ],
                 false,
                 &flags,
+                5,
             )?;
             let deadline = Instant::now() + Duration::from_secs(3);
             while std::fs::metadata(&heartbeat).map_or(true, |metadata| metadata.len() == 0) {
@@ -910,7 +921,12 @@ fn monitor_loss_allows_cooperative_cleanup_with_unread_input()
             ],
             false,
             &["--stdin"],
+            // Input saturation must not race the workload runtime timeout.
+            // The post-crash cleanup deadline below remains five seconds.
+            30,
         )?;
+        let started = Instant::now();
+        let result_path = monitor._root.path().join("state/result.json");
         assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
         assert!(matches!(client.next()?, ServerMessage::Started { .. }));
         client.output_until(b"alive\n")?;
@@ -936,20 +952,32 @@ fn monitor_loss_allows_cooperative_cleanup_with_unread_input()
         drop(client);
         std::thread::sleep(Duration::from_millis(30));
         assert!(!root.path().join("leader-clean").exists());
+        assert!(
+            monitor.child.try_wait()?.is_none() && !result_path.exists(),
+            "monitor completed before crash injection: {:?}",
+            std::fs::read_to_string(&result_path),
+        );
+        println!(
+            "cooperative monitor crash: blocked={blocked}, setup={:?}",
+            started.elapsed()
+        );
         monitor.child.kill()?;
         let _ = monitor.child.wait()?;
         let deadline = Instant::now() + Duration::from_secs(5);
         while !root.path().join("leader-clean").exists() {
             if Instant::now() >= deadline {
-                return Err(
-                    format!("cooperative cleanup missed monitor loss; blocked={blocked}").into(),
-                );
+                return Err(format!(
+                    "cooperative cleanup missed monitor loss; blocked={blocked}, helper_clean={}, result={:?}, console={:?}",
+                    root.path().join("helper-clean").exists(),
+                    std::fs::read_to_string(&result_path),
+                    std::fs::read_to_string(monitor._root.path().join("state/console.log")),
+                ).into());
             }
             std::thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(std::fs::read(root.path().join("helper-clean"))?, b"clean");
         assert_eq!(std::fs::read(root.path().join("leader-clean"))?, b"clean");
-        assert!(!monitor._root.path().join("state/result.json").exists());
+        assert!(!result_path.exists());
         println!("cooperative monitor loss: blocked={blocked}, leader and helper cleaned up");
     }
     Ok(())
