@@ -77,3 +77,11 @@ teardown, flushing waits at most 250 ms; dropped messages, sink failures, and
 an expired flush deadline are recorded in `result.json`. Diagnostics remain
 best effort across monitor loss. Errors after result publication, such as an
 exit-command failure, cannot rewrite the workload result.
+
+Build the executable with `cargo build --locked --release --features cli`.
+A default library build uses only the shared types and serde. For a native
+distribution, run `python3 tools/package.py /path/to/output` from a clean
+checkout. The archive contains the executable, Cargo-verified source package,
+README, project license, dependency license texts and inventory, and Rust
+library notices. A separate SHA-256 file identifies the archive. Native CI
+retains these archives for review.

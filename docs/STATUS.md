@@ -773,3 +773,13 @@ non-zombie member. Force/observation now defer that ambiguous result to the
 bounded group-disappearance check. EPERM never proves successful cleanup:
 only ESRCH does, and a group remaining after the deadline is incomplete.
 Native qualification of this adjustment is pending.
+
+All three native caller jobs are green in
+[run 42158301121](https://github.com/pichi-vm/madrillo/actions/runs/42158301121),
+including immediate reconnection after Unix caller-group loss and Windows
+denied/permitted Job breakaway. Native distribution preparation now builds
+the release binary and verifies the source package's default library build,
+then bundles dependency license texts/inventory and Rust library notices.
+The local Linux distribution passed with 81 Cargo dependency entries; its
+temporary target and archive were removed. Native macOS/Windows packaging
+is still pending. This does not increment full conformance.
