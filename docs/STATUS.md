@@ -16,7 +16,7 @@ regression failed against the old hard-coded `/tmp` path and passes with this
 change; full local caller qualification and formatting pass. Madrillo's
 production implementation remains unchanged.
 
-The current Pichi candidate is `1712fd693bd2fcb3958b8c1848501188ce7174c2`.
+The current Pichi candidate is `c54f003d727c9b418db3422f49b0d7ca583fba1f`.
 It incorporates main's explicit device-bus contract and removes the redundant
 fallback planner and its PMI-parser fixtures. Native checks now require main's
 explicit bus, storage and build-pipe assertions. The full local caller suite
