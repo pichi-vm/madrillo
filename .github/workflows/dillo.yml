@@ -76,11 +76,21 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           test -c /dev/kvm
-          sudo chmod a+rw /dev/kvm
-          original=$(sysctl -n vm.nr_hugepages)
+          if ! [ -r /dev/kvm ] || ! [ -w /dev/kvm ]; then
+            if [ "$(id -u)" -eq 0 ]; then
+              chmod a+rw /dev/kvm
+            else
+              sudo chmod a+rw /dev/kvm
+            fi
+          fi
+          original=$(cat /proc/sys/vm/nr_hugepages)
           if [ "$original" -lt 256 ]; then
             echo "MADRILLO_ORIGINAL_HUGEPAGES=$original" >> "$GITHUB_ENV"
-            sudo sysctl -w vm.nr_hugepages=256
+            if [ -w /proc/sys/vm/nr_hugepages ]; then
+              echo 256 > /proc/sys/vm/nr_hugepages
+            else
+              echo 256 | sudo tee /proc/sys/vm/nr_hugepages
+            fi
           fi
           awk '/HugePages_Free:/ {exit ($2 < 256)}' /proc/meminfo
       - name: Build native monitor
@@ -103,8 +113,12 @@ jobs:
         if: always() && runner.os == 'Linux' && env.MADRILLO_ORIGINAL_HUGEPAGES != ''
         run: |
           # Do not replace a subsequent reservation made by another job.
-          if [ "$(sysctl -n vm.nr_hugepages)" -eq 256 ]; then
-            sudo sysctl -w "vm.nr_hugepages=$MADRILLO_ORIGINAL_HUGEPAGES"
+          if [ "$(cat /proc/sys/vm/nr_hugepages)" -eq 256 ]; then
+            if [ -w /proc/sys/vm/nr_hugepages ]; then
+              echo "$MADRILLO_ORIGINAL_HUGEPAGES" > /proc/sys/vm/nr_hugepages
+            else
+              echo "$MADRILLO_ORIGINAL_HUGEPAGES" | sudo tee /proc/sys/vm/nr_hugepages
+            fi
           fi
       - name: Release the CI Python store reference
         if: always()
