@@ -79,8 +79,8 @@ try {
     }
     $tests += @{
         executable = $unit[0].executable
-        arguments = @('cmd::workload::tests::job::caller_job_loss_preserves_workload', '--exact', '--ignored', '--nocapture')
-        required = 'cmd::workload::tests::job::caller_job_loss_preserves_workload'
+        arguments = @('cmd::workload::tests::job::caller_loss_preserves_workload', '--exact', '--ignored', '--nocapture')
+        required = 'cmd::workload::tests::job::caller_loss_preserves_workload'
     }
     @{
         environment = $environment
