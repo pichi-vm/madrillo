@@ -50,10 +50,7 @@ jobs:
           workspaces: |
             monitor -> target
             pichi -> target
-      - name: Use the authenticated local library checkout
-        # Cargo keeps the original git identity and pinned revision. Only its
-        # transport is redirected to this private checkout; no token is copied
-        # into pichi and no private source is published in another repository.
+      - name: Configure native monitor executables
         run: |
           python3 - <<'PY'
           import os
@@ -62,9 +59,6 @@ jobs:
           binary = monitor / "target/debug" / ("madrillo.exe" if os.name == "nt" else "madrillo")
           values = {
               "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
-              "GIT_CONFIG_COUNT": "1",
-              "GIT_CONFIG_KEY_0": "url." + monitor.resolve().as_uri() + ".insteadOf",
-              "GIT_CONFIG_VALUE_0": "https://github.com/pichi-vm/madrillo",
               "PICHI_MADRILLO": str(binary),
               "MADRILLO_BIN": str(binary),
           }

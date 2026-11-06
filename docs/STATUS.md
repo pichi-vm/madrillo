@@ -508,3 +508,10 @@ A manual qualification workflow in this private repository instead checks out
 both source revisions and redirects only Cargo's Git fetch transport to the
 authenticated local monitor checkout. It does not publish private sources or
 change repository visibility. Native caller results are pending.
+
+The user subsequently authorized publishing madrillo. The repository is now
+public, confirmed by GitHub visibility and an unauthenticated Git HEAD query.
+The temporary local-fetch redirection is removed from caller qualification.
+Pichi's normal platform CI now builds the monitor revision pinned by its
+library lock entry and supplies the resulting executable to the caller tests;
+no cross-repository credential or library runtime dependency is needed.
