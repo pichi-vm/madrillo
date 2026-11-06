@@ -92,3 +92,26 @@ also checks restoration of the inherited OOM score. Source review confirms
 connections close before the helper starts and workload activation/notification
 environment variables are removed. The helper cannot substitute its result for
 the already-published workload result.
+
+C11/C12 are ready to execute with native CRI, partial/binary pipe, merged
+terminal, extra-stream, disabled-log and passthrough cases. Linux additionally
+builds the pinned conmon source afresh and compares real file and journal
+records, including combined destinations, metadata and partial-message options.
+The large-journal case must execute its normally ignored native memfd fixture.
+macOS and Windows explicitly reject requested journald integration before the
+workload runs. Log size/rotation and storage-failure coverage remain separate
+under C13-C15; these entries do not claim those requirements are complete.
+
+C16/C17 are ready to execute against Linux's actual systemd notification and
+socket-activation facilities. The fixtures check notification filtering, service
+attribution, oversized datagrams, pressure during force/timeout, and two named
+sockets whose metadata identifies the actual workload PID. macOS and Windows
+must reject explicitly requested systemd facilities before launching a workload.
+
+C29 now also requires the native RPM build/payload check on Linux. That case
+needs Fedora's cargo-rpm-macros, RPM build tools, native Rust/C compilers and
+Python. It generates the source RPM in temporary storage, rebuilds it offline,
+executes the packaged monitor, and verifies the executable and license payload.
+Missing build tools fail the case. A full round also needs a fresh
+`.qualification/reference` directory: the conmon builder rejects reuse of an
+existing oracle source tree.

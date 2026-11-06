@@ -35,6 +35,7 @@ def main():
         "binary": str(binary),
         "binary_sha256": hashlib.sha256(binary.read_bytes()).hexdigest(),
     }, indent=2) + "\n")
+    print(f"Built fresh conmon oracle {REVISION}; source and binary digests retained")
 
 
 if __name__ == "__main__":

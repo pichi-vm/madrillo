@@ -155,9 +155,11 @@
       "id": "C11",
       "behavior": "CRI file logs",
       "criterion": "Conmon-compatible timestamp/stream/F/P records; partial lines, binary pipe bytes, terminal merged output, extra source separation",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "conmon-reference",
+        "conmon-logs"
       ],
       "evidence": [],
       "hosts": [
@@ -170,9 +172,13 @@
       "id": "C12",
       "behavior": "Log destinations",
       "criterion": "File, journald where applicable, file+journal, none, passthrough; actual destination behavior and metadata match",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "conmon-reference",
+        "linux-journal",
+        "linux-journal-large",
+        "nonlinux-service-rejection"
       ],
       "evidence": [],
       "hosts": [
@@ -228,8 +234,11 @@
       "id": "C16",
       "behavior": "Notification relay",
       "criterion": "Allowed sd_notify messages only, real service attribution, no invented readiness/heartbeat or arbitrary descriptor-store proxy",
-      "status": "pending",
-      "tests": [],
+      "status": "ready",
+      "tests": [
+        "linux-notifications",
+        "nonlinux-service-rejection"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -241,8 +250,11 @@
       "id": "C17",
       "behavior": "Socket activation",
       "criterion": "Correct inherited descriptors, LISTEN_FDS/LISTEN_FDNAMES semantics and actual child LISTEN_PID; unsupported host integration explicit",
-      "status": "pending",
-      "tests": [],
+      "status": "ready",
+      "tests": [
+        "linux-activation",
+        "nonlinux-service-rejection"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -417,7 +429,8 @@
       "criterion": "Native Linux/macOS/Windows MSVC build and execution; reproducible locked dependencies, license inventory, package contains full binary and bare lib",
       "status": "ready",
       "tests": [
-        "native-distribution"
+        "native-distribution",
+        "linux-native-rpm"
       ],
       "evidence": [],
       "hosts": [
@@ -523,7 +536,13 @@
         "test detach_releases_writer_without_closing_child_input ... ok",
         "test draining_viewer_survives_a_large_startup_burst ... ok",
         "test missing_exit_command_preserves_the_retained_workload_result ... ok",
-        "test capture_releases_a_still_open_pipe_before_invoking_the_hook ... ok"
+        "test capture_releases_a_still_open_pipe_before_invoking_the_hook ... ok",
+        "test terminal_logs_merge_stdout_and_stderr ... ok",
+        "test source_based_full_partial_and_binary_records ... ok",
+        "test partial_chunks_retain_the_original_payload ... ok",
+        "test empty_capture_does_not_create_a_record ... ok",
+        "test named_capture_preserves_binary_bytes_separately_from_console ... ok",
+        "test disabled_and_passthrough_log_drivers_preserve_native_execution ... ok"
       ]
     },
     {
@@ -685,12 +704,163 @@
       "success_markers": [
         "Native pipe/terminal OOM protection protected: workload and exit-helper restoration passed"
       ]
+    },
+    {
+      "id": "conmon-reference",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/build_conmon.py",
+        ".qualification/reference"
+      ],
+      "timeout": 600,
+      "success_markers": [
+        "Built fresh conmon oracle 46837cd4800889521b6eccd4cce75a69249b1702; source and binary digests retained"
+      ]
+    },
+    {
+      "id": "conmon-logs",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/compare_conmon.py",
+        ".qualification/reference/oracle.json",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 180,
+      "success_markers": [
+        "12 CRI/binary/native-exit comparisons passed against conmon 46837cd4800889521b6eccd4cce75a69249b1702"
+      ]
+    },
+    {
+      "id": "linux-journal",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "python3",
+        "tools/check_journal.py",
+        ".qualification/reference/oracle.json",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 180,
+      "success_markers": [
+        "journald differential: binary payloads, metadata, priority, partial opt-out and combined file output passed"
+      ]
+    },
+    {
+      "id": "linux-journal-large",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--features",
+        "cli",
+        "--bin",
+        "madrillo",
+        "oversized_datagram_uses_memfd_and_preserves_binary_message",
+        "--",
+        "--ignored",
+        "--nocapture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test logging::journal::tests::oversized_datagram_uses_memfd_and_preserves_binary_message ... ok"
+      ]
+    },
+    {
+      "id": "linux-notifications",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "python3",
+        "tools/check_notify.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 180,
+      "success_markers": [
+        "notify qualification: filtering, oversized rejection, backpressure with force/timeout, socket release, and real Type=notify attribution passed"
+      ]
+    },
+    {
+      "id": "linux-activation",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_activation.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "Native systemd activation passed for two named sockets, pipe and terminal launch"
+      ]
+    },
+    {
+      "id": "nonlinux-service-rejection",
+      "hosts": [
+        "macos",
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "linux_integrations_are_rejected_without_launching_the_workload",
+        "--",
+        "--exact"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test linux_integrations_are_rejected_without_launching_the_workload ... ok"
+      ]
+    },
+    {
+      "id": "linux-native-rpm",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "-B",
+        "tools/check_rpm.py"
+      ],
+      "timeout": 1800,
+      "success_markers": [
+        "Native RPM qualification passed: locked source, offline build, executable launch and license payload"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "87d68d311d0aa3b832b14c5c845fdb15f7289b7c"
+      "revision": "f8ff311118e9449558b82a768f895c6b059badc3"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

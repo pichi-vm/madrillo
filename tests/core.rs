@@ -122,6 +122,58 @@ fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::er
 }
 
 #[test]
+fn terminal_logs_merge_stdout_and_stderr() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let result = run(root.path(), "emit", &["--terminal"], &[])?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
+    assert!(result.log_errors.is_empty(), "{result:?}");
+    assert!(!result.output_truncated);
+    let log = root.path().join("state/console.log");
+    assert!(payload(&log, b"stderr")?.is_empty());
+    let merged = payload(&log, b"stdout")?;
+    for expected in [b"first".as_slice(), b"diagnostic"] {
+        assert!(merged.windows(expected.len()).any(|part| part == expected));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+#[test]
+fn linux_integrations_are_rejected_without_launching_the_workload()
+-> Result<(), Box<dyn std::error::Error>> {
+    for (flags, message) in [
+        (
+            vec!["--log-path", "journald", "--log-id", "native-test"],
+            "journald logging requires Linux",
+        ),
+        (
+            vec!["--sdnotify-socket", "unsupported"],
+            "systemd notification relay requires Linux",
+        ),
+        (
+            vec!["--replace-listen-pid"],
+            "systemd socket activation requires Linux",
+        ),
+    ] {
+        let root = tempfile::tempdir()?;
+        let marker = root.path().join("must-not-launch");
+        let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+            .arg("--state-dir")
+            .arg(root.path().join("state"))
+            .args(flags)
+            .arg("--")
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("touch")
+            .arg(&marker)
+            .output()?;
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains(message));
+        assert!(!marker.exists());
+    }
+    Ok(())
+}
+
+#[test]
 fn detached_timeout_preserves_reason_and_console_lifetime() -> Result<(), Box<dyn std::error::Error>>
 {
     for mode in ["sleep", "stdin-survival", "flood"] {
