@@ -703,6 +703,20 @@ The native fixture requires the error message, severity, exact PID, executable,
 subsystem and category, and keeps workload stderr separate. All three hosts
 passed at `04adf21` in [run 42153084016](https://github.com/pichi-vm/madrillo/actions/runs/42153084016).
 That initial macOS fixture ran as root; the workflow now runs it as the ordinary
-runner user to qualify unprivileged delivery and observation too. That additional
-native check remains pending. System filtering/retention still apply; submitting
-a diagnostic is not a durable-storage acknowledgement. Full conformance is 0/3.
+runner user. Unprivileged delivery and observation passed with UID 501 at
+`c79965d` in [run 42153718573](https://github.com/pichi-vm/madrillo/actions/runs/42153718573),
+with all three native jobs green. An earlier unprivileged attempt saw the
+workload terminate with SIGKILL instead of exit 37; the cause of that particular
+termination is not established, and the fixture now retains native failure
+diagnostics. System filtering/retention still apply; submitting a diagnostic is
+not a durable-storage acknowledgement. Full conformance is 0/3.
+
+A separate stop/resume regression exposed an actual macOS supervision bug in
+[run 42153937972](https://github.com/pichi-vm/madrillo/actions/runs/42153937972/job/127683475541):
+the monitor treated a stopped-child event returned by `waitid` as completion
+and killed the workload. Unix exit observation now requires a terminal status,
+preserving stopped/continued workloads. The regression stops a running echo
+workload, requires the monitor and unpublished result to survive, resumes input,
+and verifies normal EOF/exit. Local strict Clippy, 12 control tests and 12 core
+tests pass; native verification of the fix is pending. This does not establish
+the cause of the earlier isolated SIGKILL.

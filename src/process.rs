@@ -122,7 +122,7 @@ impl Workload {
                         }
                         _ => None,
                     };
-                    return Ok(true);
+                    return Ok(self.observed.is_some());
                 }
                 waitpid(pid, Some(WaitPidFlag::WNOHANG))?;
             }
@@ -150,7 +150,10 @@ impl Workload {
                                 core_dumped: status.dumped(),
                             })
                     });
-                Ok(true)
+                // A stopped or continued child is still a live workload.
+                // Require terminal status even if the host returns another
+                // kind of event despite the EXITED selection above.
+                Ok(self.observed.is_some())
             } else {
                 Ok(false)
             }
