@@ -48,6 +48,14 @@ pinned conmon build/differential artifacts, pichi/dillo integration evidence,
 and native CI round orchestration. Until those are present,
 the full runner must fail closed while any requirement remains pending.
 
+The manually dispatched `dillo.yml` workflow qualifies the selected immutable
+Dillo revision against the monitor built from that workflow's source. It runs
+three real VM console-lifetime cases on native KVM, HVF and WHP, including the
+explicitly selected monitor-crash case. `tools/check_dillo.py` rejects zero-test
+or ignored-only runs and requires positive guest-input/cooperative-exit markers.
+Linux fixtures need 128 free 2 MiB hugepages for their 256 MiB guests. This focused
+workflow does not replace the full VM suite or satisfy C24's complete mapping.
+
 ## Reviewed native launch and reconnection coverage
 
 C02 is ready to execute on all three native hosts. The required positive markers
