@@ -19,6 +19,17 @@ def main():
     print(compiler, flush=True)
     revision = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=dillo, text=True)
     print(f"Dillo revision: {revision.strip()}; monitor: {monitor}", flush=True)
+    unit = "liveness::tests::unread_pipe_input_does_not_hide_writer_loss"
+    result = subprocess.run(
+        ["cargo", "+nightly-2026-07-06", "--config", "packaging/cargo-config.toml",
+         "test", "--locked", "-p", "dillo-virtio-console", unit,
+         "--", "--exact", "--nocapture"], cwd=dillo, check=False,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        encoding="utf-8", errors="replace", timeout=600)
+    print(result.stdout, end="", flush=True)
+    result.check_returncode()
+    assert unit in result.stdout and "1 passed; 0 failed; 0 ignored;" in result.stdout
+    assert "console lifetime observed with " in result.stdout
     cases = [
         ("managed_console_close_stops_a_booted_vm", False,
          ["native VM console lifetime: boot report, ordinary input, cooperative zero exit"]),
@@ -29,7 +40,8 @@ def main():
     ]
     for name, ignored, markers in cases:
         test = "console_lifetime::" + name
-        command = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "dillo",
+        command = ["cargo", "+nightly-2026-07-06", "--config", "packaging/cargo-config.toml",
+                   "test", "--locked", "-p", "dillo",
                    "--features", "vm-tests", "--test", "boot", test, "--", "--exact",
                    "--test-threads=1", "--nocapture"]
         if ignored:
@@ -37,7 +49,7 @@ def main():
         result = subprocess.run(command, cwd=dillo,
                                 env=dict(os.environ, MADRILLO_BIN=str(monitor)),
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                text=True, encoding="utf-8", errors="replace")
+                                text=True, encoding="utf-8", errors="replace", timeout=600)
         print(result.stdout, end="", flush=True)
         result.check_returncode()
         assert test in result.stdout, f"missing native test: {test}"

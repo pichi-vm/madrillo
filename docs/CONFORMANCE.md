@@ -52,9 +52,13 @@ The manually dispatched `dillo.yml` workflow qualifies the selected immutable
 Dillo revision against the monitor built from that workflow's source. It runs
 three real VM console-lifetime cases on native KVM, HVF and WHP, including the
 explicitly selected monitor-crash case. `tools/check_dillo.py` rejects zero-test
-or ignored-only runs and requires positive guest-input/cooperative-exit markers.
+or ignored-only runs and requires guest input, sustained unread-input pressure,
+and a cooperative zero exit after monitor death. A separate native pipe test
+proves hangup detection with unread bytes and verifies that observation consumes
+none of them. The C24 cases run these checks against the pinned Dillo checkout;
+the requirement remains pending until its complete native review finishes.
 Linux fixtures need 128 free 2 MiB hugepages for their 256 MiB guests. This focused
-workflow does not replace the full VM suite or satisfy C24's complete mapping.
+workflow does not replace the full VM suite.
 
 ## Reviewed native launch and reconnection coverage
 

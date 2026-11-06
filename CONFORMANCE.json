@@ -377,7 +377,10 @@
       "behavior": "Monitor loss",
       "criterion": "Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "native-dillo-console-unix",
+        "native-dillo-console-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -1153,12 +1156,53 @@
       "success_markers": [
         "native macOS unified logging: fatal delivery, process identity and workload separation passed"
       ]
+    },
+    {
+      "id": "native-dillo-console-unix",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_dillo.py",
+        "target/debug/madrillo",
+        ".qualification/components/dillo"
+      ],
+      "timeout": 1800,
+      "success_markers": [
+        "console lifetime observed with ",
+        "madrillo crash: unread guest console input stayed backpressured",
+        "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
+        "native Dillo console lifetime: three real VM cases passed"
+      ]
+    },
+    {
+      "id": "native-dillo-console-windows",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_dillo.py",
+        "target/debug/madrillo.exe",
+        ".qualification/components/dillo"
+      ],
+      "timeout": 1800,
+      "success_markers": [
+        "console lifetime observed with ",
+        "madrillo crash: unread guest console input stayed backpressured",
+        "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
+        "native Dillo console lifetime: three real VM cases passed"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "39bcb773a27b7a62f23c63ce505d40d8c8a8c28e"
+      "revision": "58eb93133ae0039f971ac6d3032fc0c310691d55"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
