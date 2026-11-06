@@ -437,7 +437,14 @@ impl Client {
                     output.extend_from_slice(&bytes);
                     assert!(output.len() <= 64 * 1024, "unexpected shell output volume");
                 }
-                response => return Err(format!("unexpected shell response {response:?}").into()),
+                response => {
+                    return Err(format!(
+                        "unexpected shell response {response:?}; wanted {:?}, received {:?}",
+                        String::from_utf8_lossy(needle),
+                        String::from_utf8_lossy(&output)
+                    )
+                    .into());
+                }
             }
         }
         Ok(output)

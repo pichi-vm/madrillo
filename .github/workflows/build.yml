@@ -35,6 +35,19 @@ jobs:
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Current tests (coverage remains pending)
         run: cargo test --locked --all-features
+      - name: Windows shell under a redirected launcher
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          python3 -B - <<'PY'
+          import subprocess, sys
+          result = subprocess.run([
+              'cargo', 'test', '--locked', '--all-features', '--test', 'control',
+              'native_command_shell_interrupt_survives_detach', '--', '--exact',
+          ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
+          print(result.stdout)
+          sys.exit(result.returncode)
+          PY
       - name: Observe console loss with unread input
         run: cargo run --locked --features qualification --example pipe_liveness
       - name: Unix inherited pipe qualification
