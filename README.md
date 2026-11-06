@@ -49,9 +49,16 @@ Monitor diagnostics go to stderr. `--log-level` defaults to `warn`, with
 `error`, `info`, `debug`, and `trace` also supported. Names are case-insensitive;
 conmon's `warning`, `fatal`, and `panic` aliases are accepted. Unix `--syslog`
 additionally sends diagnostics to the local syslog service as `madrillo`, with
-the monitor's PID and user facility. Severity follows the selected message
-level (trace uses syslog debug). Workload logging remains configured separately
-by `--log-path`; workload bytes are never sent through the diagnostic logger.
+the monitor's PID and user facility. Severity follows the message level (trace
+uses syslog debug). On macOS this uses Apple's unified logging instead, under
+subsystem `org.pichi.madrillo` and category `monitor`. Error, warning, info and
+debug/trace map to native error, default, info and debug respectively; the
+message also includes the original level. View these with Console or
+`log show --predicate 'subsystem == "org.pichi.madrillo"' --info --debug`.
+Native filtering and retention apply; submitting a diagnostic does not
+acknowledge its storage by the system service. Workload logging remains
+configured separately by `--log-path`; workload bytes are never sent through
+the diagnostic logger.
 With passthrough, both monitor diagnostics and workload stderr use the caller's
 stderr; `--log-level error` suppresses non-error monitor messages there.
 

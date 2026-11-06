@@ -9,7 +9,7 @@ description = "A native process monitor inspired by conmon"
 
 [features]
 default = []
-cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix", "dep:interprocess", "dep:filedescriptor", "dep:widestring", "dep:signal-hook", "dep:command-fds", "dep:system-interface", "dep:conpty-oxide", "dep:win-custody", "dep:winx", "dep:syslog"]
+cli = ["dep:clap", "dep:serde_json", "dep:thiserror", "dep:chrono", "dep:tempfile", "dep:cap-std", "dep:cap-fs-ext", "dep:process-wrap", "dep:nix", "dep:rustix", "dep:interprocess", "dep:filedescriptor", "dep:widestring", "dep:signal-hook", "dep:command-fds", "dep:system-interface", "dep:conpty-oxide", "dep:win-custody", "dep:winx", "dep:syslog", "dep:oslog"]
 qualification = ["cli", "dep:filedescriptor", "dep:portable-pty", "dep:process-wrap", "dep:command-fds", "dep:nix", "dep:rustix", "dep:terminal_size", "dep:windows-spawn"]
 
 [lib]
@@ -68,7 +68,12 @@ command-fds = { version = "=0.3.3", optional = true }
 nix = { version = "0.31", features = ["fs", "process", "signal", "poll", "term", "socket", "uio"], optional = true }
 rustix = { version = "=1.1.6", features = ["process", "termios"], optional = true }
 signal-hook = { version = "0.3", optional = true }
+
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
 syslog = { version = "=7.0.0", optional = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+oslog = { version = "=0.2.0", default-features = false, optional = true }
 
 [target.'cfg(windows)'.dependencies]
 widestring = { version = "1", optional = true }

@@ -55,7 +55,7 @@ impl Diagnostics {
             .name("diagnostics".into())
             .spawn(move || {
                 let mut errors = Vec::new();
-                #[cfg(unix)]
+                #[cfg(all(unix, not(target_os = "macos")))]
                 let mut logger = if syslog {
                     match syslog::unix(syslog::Formatter3164 {
                         facility: syslog::Facility::LOG_USER,
@@ -72,13 +72,18 @@ impl Diagnostics {
                 } else {
                     None
                 };
+                // Local socket writes bypass Apple's unified logging API.
+                // Keep its native filtering/delivery policy; submission is not
+                // an acknowledgement of durable storage by the system service.
+                #[cfg(target_os = "macos")]
+                let logger = syslog.then(|| oslog::OsLog::new("org.pichi.madrillo", "monitor"));
                 #[cfg(not(unix))]
                 let _ = syslog;
                 let mut stderr_failed = false;
                 while let Ok(message) = receiver.recv() {
                     match message {
                         Message::Record(level, text) => {
-                            #[cfg(unix)]
+                            #[cfg(all(unix, not(target_os = "macos")))]
                             if let Some(sink) = &mut logger {
                                 let sent = match level {
                                     Level::Error => sink.err(text.as_str()),
@@ -90,6 +95,16 @@ impl Diagnostics {
                                     errors.push(format!("diagnostics syslog: {error}"));
                                     logger = None;
                                 }
+                            }
+                            #[cfg(target_os = "macos")]
+                            if let Some(sink) = &logger {
+                                let native_level = match level {
+                                    Level::Error => oslog::Level::Error,
+                                    Level::Warn => oslog::Level::Default,
+                                    Level::Info => oslog::Level::Info,
+                                    Level::Debug | Level::Trace => oslog::Level::Debug,
+                                };
+                                sink.with_level(native_level, &format!("[{level:?}]: {text}"));
                             }
                             if !stderr_failed
                                 && let Err(error) =

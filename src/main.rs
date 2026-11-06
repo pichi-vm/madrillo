@@ -115,7 +115,7 @@ struct Cli {
     /// Monitor diagnostic threshold: error, warn, info, debug, or trace.
     #[arg(long, default_value = "warn")]
     log_level: Level,
-    /// Also send monitor diagnostics to the local Unix syslog service.
+    /// Also send diagnostics to syslog (Apple unified logging on macOS).
     #[cfg(unix)]
     #[arg(long)]
     syslog: bool,
