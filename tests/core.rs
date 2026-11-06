@@ -202,7 +202,7 @@ fn escaped_session_is_outside_the_documented_macos_scope() -> Result<(), Box<dyn
         queue.kevent(
             &[],
             &mut events,
-            Some(TimeSpec::from_duration(Duration::from_secs(20)))
+            Some(*TimeSpec::from_duration(Duration::from_secs(20)).as_ref())
         )?,
         1
     );
