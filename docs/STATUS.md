@@ -2,12 +2,12 @@
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
 **0 of 3 consecutive clean passes**. The [manifest](../CONFORMANCE.json) has
-23 requirements with reviewed executable coverage. C07, C09, C10, C18, C19,
+24 requirements with reviewed executable coverage. C07, C09, C10, C18,
 C26 and C27 remain pending. Readiness is not a full conformance pass.
 
 Madrillo's native tests, strict checks, diagnostics and distribution pass on
-Linux, macOS and Windows MSVC at `14cfd63` in
-[run 42192607527](https://github.com/pichi-vm/madrillo/actions/runs/42192607527).
+Linux, macOS and Windows MSVC at `321ef70` in
+[run 42194861317](https://github.com/pichi-vm/madrillo/actions/runs/42194861317).
 Production Rust sources remain unchanged since `30437e1`; recent changes add
 qualification, caller integration, and CI corrections.
 
@@ -55,13 +55,16 @@ suites at that revision; staged-image testing completes in 307.04 seconds.
 Windows opaque handle inheritance remains unsupported, so these requirements
 remain pending despite the new executable mappings.
 
-C19 now has a first-code placement fixture for pipe/terminal workloads and an
-immediate helper, with an outside exit helper. Linux passes all sixteen launches
+C19 now has reviewed first-code placement coverage for pipe/terminal workloads
+and an immediate helper, with an outside exit helper. Linux passes all sixteen launches
 and the cgroup v2 probe now verifies that the monitor stays outside workload
 limits. The Windows test requires a successful outside breakaway control before
 requiring denied breakaway inside the workload and its helper. It runs through
-the existing native caller harness outside Cargo's restrictive Job. Native
-macOS/Windows qualification is pending; no C19 promotion is claimed yet.
+the existing native caller harness outside Cargo's restrictive Job. The
+[native caller workflow](https://github.com/pichi-vm/madrillo/actions/runs/42194873504)
+passes all three hosts, including the explicit Windows placement fixture.
+Linux/macOS placement and both Linux cgroup versions pass in the native build
+workflow above. C19 is ready; ConPTY Job-empty observation remains a C07 gap.
 
 The full-conformance workflow now orchestrates three fresh rounds per native
 host, retains reports/logs/distributions/reference artifacts, and aggregates
@@ -69,6 +72,9 @@ each round before requiring a streak of three. Its preparation step rejects
 pending coverage before scheduling native runners. Per-round conmon source
 trees are retained separately so the next round cannot reuse an old build.
 This is orchestration, not evidence that any full round has passed.
+The [first dispatch](https://github.com/pichi-vm/madrillo/actions/runs/42195548702)
+at `e00e529` stopped at the expected pending-coverage checks and scheduled no
+native workloads. It is a verified rejection, not a full conformance pass.
 
 The macOS scope decision is settled: descendants stay in the workload's managed
 process group. Dillo owns shutdown of helpers it deliberately moves outside it.

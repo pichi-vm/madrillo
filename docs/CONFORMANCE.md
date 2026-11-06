@@ -37,7 +37,7 @@ The manifest's initial `clean_streak` is not accepted as evidence by the runner.
 The manually dispatched `conformance.yml` workflow runs three fresh rounds on
 native Linux/KVM, macOS ARM64/HVF and Windows MSVC/WHP. Its preparation job
 requires complete reviewed coverage before reserving any native runner; it
-currently fails because seven requirements remain pending. Component revisions
+currently fails because six requirements remain pending. Component revisions
 come from this manifest, and their recursive checkouts remain unchanged. Each
 host runs rounds in order; aggregation then verifies all three hosts for each
 round in order and requires a final streak of three. Partial/failed rounds are
@@ -193,7 +193,7 @@ The monitor's Windows pipe Job does not kill Dillo on monitor-handle loss, so th
 fixture must observe Dillo's cooperative exit, not substitute forced termination.
 The mapped commands must execute again during each full conformance round.
 
-C19 has native placement mappings but remains pending native review. The first
+C19 is ready to execute on all three native hosts. The first
 workload operation checks its established process group and the monitor's
 separate group; terminal mode also checks the session and controlling terminal.
 An immediate helper must inherit that group. On Windows, the first workload
@@ -208,6 +208,14 @@ Linux cgroup v1/v2 probes additionally check first-code membership and that the
 monitor remains outside the workload's cgroup. The existing pre-Start gate test
 covers cancellation before authorization. These placement checks do not claim
 the separately missing ConPTY Job-empty observation.
+At `321ef70`, [Linux and macOS native qualification](https://github.com/pichi-vm/madrillo/actions/runs/42194861317)
+passes this fixture, including both Linux cgroup versions. The [Windows native
+caller job](https://github.com/pichi-vm/madrillo/actions/runs/42194873504/job/127815497749)
+explicitly executes the placement test outside Cargo's Job and records both
+pipe and ConPTY success markers. Source review confirms Unix setup precedes
+`exec`; Windows pipe creation is suspended through Job assignment, and ConPTY
+uses the Job attribute in the native process-creation transaction. This is
+reviewed coverage for each future full round, not a full conformance pass.
 
 C11/C12 are ready to execute with native CRI, partial/binary pipe, merged
 terminal, extra-stream, disabled-log and passthrough cases. Linux additionally

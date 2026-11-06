@@ -299,7 +299,7 @@
       "id": "C19",
       "behavior": "Placement",
       "criterion": "Native membership established before child code/forks; monitor outside workload limits; external manager gate when needed",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
         "native-unix-placement",
@@ -1260,7 +1260,10 @@
       "success_markers": [
         "native monitor crash: unknown state and cleanup inputs retained",
         "native Pichi caller and crash reconciliation passed",
-        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok"
+        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok",
+        "native placement: terminal=false, early leader/helper membership and outside exit helper passed",
+        "native placement: terminal=true, early leader/helper membership and outside exit helper passed",
+        "test native_placement_precedes_workload_and_helpers ... ok"
       ]
     },
     {
