@@ -180,14 +180,19 @@ impl Workload {
     }
     pub(crate) fn force(&mut self) -> io::Result<()> {
         #[cfg(target_os = "linux")]
-        if let Some(group) = &mut self.group {
-            return group.force();
+        {
+            let scope = self.group.as_mut().map(|group| group.force()).transpose();
+            // Always terminate the owned leader, even if it changed groups
+            // or left the supplied cgroup. Subreaping then adopts its children.
+            let leader = self.child.kill();
+            scope?;
+            leader
         }
         #[cfg(target_os = "macos")]
         {
             force_group_macos(self.child.id())
         }
-        #[cfg(all(unix, not(target_os = "macos")))]
+        #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
         {
             use nix::{
                 errno::Errno,

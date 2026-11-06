@@ -17,8 +17,12 @@ including helpers in different groups or sessions. It validates child ownership
 and signals through pidfds; only a kernel wait reporting no children establishes
 completion. This requires native pidfd/wait support, readable procfs, and
 permission to signal the descendants. A supplied `--cgroup` additionally places
-the workload before execution, observes OOM counters and uses cgroup subtree
-termination. Missing permissions or failed cleanup remain explicit in the result.
+the workload before execution and observes OOM evidence. V2 uses atomic subtree
+termination and `memory.events`; v1 uses subreaper cleanup, native OOM eventfd
+registration and the final `memory.oom_control` kill counter. The caller retains
+the cgroup until completion. Missing observation support (including v1 event
+registration on PREEMPT_RT), permissions or failed cleanup remain explicit in
+the result.
 
 On macOS, Madrillo manages the workload process group it creates. Children and
 grandchildren must remain in that group for Madrillo to guarantee their cleanup

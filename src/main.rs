@@ -122,7 +122,7 @@ struct Cli {
     /// Relay allowed service notifications to this systemd socket (Linux).
     #[arg(long)]
     sdnotify_socket: Option<OsString>,
-    /// Existing, empty, caller-owned Linux cgroup v2 directory for this workload.
+    /// Existing, empty, caller-owned Linux cgroup directory for this workload.
     #[arg(long)]
     cgroup: Option<PathBuf>,
     /// Force the workload scope after this many seconds.

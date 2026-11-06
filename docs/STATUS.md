@@ -854,3 +854,32 @@ Native retesting and caller integration of this Linux change are pending.
 Kernel contracts: [subreaper adoption](https://man7.org/linux/man-pages/man2/PR_SET_CHILD_SUBREAPER.2const.html),
 [pidfd identity](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), and
 [wait ownership and __WALL](https://man7.org/linux/man-pages/man2/waitpid.2.html).
+
+Native qualification and distribution at `2dbcb7a` pass on all three hosts in
+[run 42161238752](https://github.com/pichi-vm/madrillo/actions/runs/42161238752).
+Local Pichi integration also passed 139 unit tests, 31 CLI tests and its explicit
+native launch/control fixture against that revision. The native caller matrix
+for Pichi `ad4841a` is running separately. Full conformance remains 0/3.
+
+Linux cgroup v1 support now uses native eventfd registration before launch,
+retains those notifications until completion, and checks the final kernel OOM
+kill counter. Cgroup removal is not classified as OOM, and unavailable event
+registration remains explicit. Supplied v1 groups use the subreaper cleanup path
+and recursive final population checks; v2 retains atomic `cgroup.kill`. No new
+CLI option or shared-library dependency is introduced.
+
+Linux force now terminates the owned leader directly even when it joined another
+process group, then adopts and terminates the remaining descendants. A supplied
+v2 cgroup also receives atomic termination. This removes the Linux cleanup
+dependence on the original group while preserving group-based ordinary signal
+forwarding. The escaped-leader timeout fixture checks this boundary.
+
+Local strict Clippy, 15 core tests and 14 control tests pass. A disposable KVM VM
+booted Linux `7.2.10-200.fc44.x86_64` with a real v1 memory hierarchy and passed
+pre-exec placement, pipe/PTY escaped-session and nested-cgroup descendant cleanup,
+32 MiB bounded OOM notification/counter checks, and fake-filesystem rejection.
+The VM has no host disks or network devices; its files and build directory were
+removed afterward. This test is included in native CI; CI retesting is pending.
+
+V1 contracts follow [conmon's cgroup implementation](https://github.com/containers/conmon/blob/46837cd4800889521b6eccd4cce75a69249b1702/src/cgroup.c)
+and the [Linux memory-controller implementation](https://github.com/torvalds/linux/blob/master/mm/memcontrol-v1.c).

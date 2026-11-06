@@ -428,6 +428,8 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
         | Some("escaped-branch")
         | Some("deep-tree")
         | Some("daemon-tree")
+        | Some("escaped-leader")
+        | Some("nested-cgroup-tree")
         | Some("waiting-tree")
         | Some("waiting-daemon-tree") => {
             let path = args.get(1).ok_or("heartbeat path missing")?;
@@ -435,11 +437,28 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             if args[0] == "escaped-branch" {
                 nix::unistd::setsid()?;
             }
+            #[cfg(target_os = "linux")]
+            if args[0] == "escaped-leader" {
+                let parent_group = nix::unistd::getpgid(Some(nix::unistd::getppid()))?;
+                nix::unistd::setpgid(nix::unistd::Pid::from_raw(0), parent_group)?;
+            }
+            #[cfg(target_os = "linux")]
+            if args[0] == "nested-cgroup-tree" {
+                let nested =
+                    std::path::Path::new(args.get(2).ok_or("cgroup path missing")?).join("nested");
+                std::fs::create_dir(&nested)?;
+                std::fs::write(nested.join("cgroup.procs"), b"0")?;
+            }
             let mut child = Command::new(std::env::current_exe()?)
                 .arg(match args[0].to_str() {
                     Some("branch") => "descendant",
                     Some("escaped-branch") => "escaped-descendant",
-                    Some("daemon-tree" | "waiting-daemon-tree") => "escaped-branch",
+                    Some(
+                        "daemon-tree"
+                        | "waiting-daemon-tree"
+                        | "escaped-leader"
+                        | "nested-cgroup-tree",
+                    ) => "escaped-branch",
                     _ => "branch",
                 })
                 .arg(path)
@@ -453,7 +472,8 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 }
                 std::thread::sleep(Duration::from_millis(5));
             }
-            if args[0] != "deep-tree" && args[0] != "daemon-tree" {
+            if args[0] != "deep-tree" && args[0] != "daemon-tree" && args[0] != "nested-cgroup-tree"
+            {
                 child.wait()?;
             }
             Ok(37)

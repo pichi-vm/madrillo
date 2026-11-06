@@ -112,8 +112,10 @@ Disconnect before gated Start cancels; disconnect after authorization detaches.
 Linux establishes subreaping before launch. After leader termination it stops
 and reaps adopted descendants through pidfds, including descendants that changed
 groups/sessions, until `waitid` with `__WALL` confirms `ECHILD`. A cgroup supplied
-by the caller adds pre-exec placement, resource accounting, atomic subtree
-termination and a final population check. Windows needs a Job Object with early
+by the caller adds pre-exec placement, resource accounting and a final population
+check. V2 adds atomic subtree termination; v1 uses subreaper cleanup. V1 OOM
+observation registers an eventfd before launch and checks the final kill counter;
+v2 uses `memory.events`. Windows needs a Job Object with early
 membership. The user approved the native conmon process-group contract for
 macOS on 2026-11-05: Madrillo creates a workload process group and stops its
 members, including ordinary children and grandchildren. Workloads must keep

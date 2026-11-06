@@ -215,6 +215,42 @@ fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+#[test]
+fn timeout_stops_a_leader_that_left_its_group() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let heartbeat = root.path().join("heartbeat");
+    let result = run(
+        root.path(),
+        "escaped-leader",
+        &["--timeout", "1"],
+        &[heartbeat.as_os_str()],
+    )?;
+    assert_eq!(result.cause, CompletionCause::TimedOut, "{result:?}");
+    assert_eq!(
+        result.cleanup,
+        madrillo::CleanupResult::Complete,
+        "{result:?}"
+    );
+    assert_eq!(
+        result.leader,
+        LeaderResult::Signal {
+            signal: 9,
+            core_dumped: false
+        },
+        "{result:?}"
+    );
+    let before = fs::read(&heartbeat)?;
+    assert!(!before.is_empty());
+    std::thread::sleep(Duration::from_millis(150));
+    assert_eq!(
+        fs::read(heartbeat)?,
+        before,
+        "escaped helper survived timeout"
+    );
+    Ok(())
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn escaped_session_is_outside_the_documented_macos_scope() -> Result<(), Box<dyn std::error::Error>>
