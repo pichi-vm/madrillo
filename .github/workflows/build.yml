@@ -83,3 +83,11 @@ jobs:
       - name: State completion status
         shell: bash
         run: echo 'These checks do not constitute a full C01-C30 conformance pass.'
+      - name: Package native executable, bare library and dependency licenses
+        run: python3 tools/package.py .qualification/distribution
+      - name: Retain native distribution for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: madrillo-${{ matrix.os }}
+          path: .qualification/distribution/*
+          if-no-files-found: error

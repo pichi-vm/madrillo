@@ -6,6 +6,7 @@ rust-version = "1.94"
 license = "Apache-2.0"
 publish = false
 description = "A native process monitor inspired by conmon"
+repository = "https://github.com/pichi-vm/madrillo"
 
 [features]
 default = []
