@@ -93,7 +93,14 @@ try {
     $command = '"{0}" -NoLogo -NoProfile -NonInteractive -File "{1}" -Request "{2}"' -f $powershell, $PSCommandPath, $requestFile
     # WMI avoids the invoking runner's Job, but also has its own provider Job
     # limits unless this documented startup flag is explicitly supplied.
-    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{ CreateFlags = [uint32]0x01000000 }
+    # Console-close qualification needs a visible console on this test host's
+    # desktop. Inheriting WMI's service desktop hides it from MainWindowHandle.
+    # https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-processstartup
+    $startup = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly -Property @{
+        CreateFlags = [uint32]0x01000000
+        WinstationDesktop = 'WinSta0\Default'
+        ShowWindow = [uint16]1
+    }
     $created = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{ CommandLine = $command; ProcessStartupInformation = $startup }
     if ($created.ReturnValue -ne 0) { throw "WMI test-host creation failed: $($created.ReturnValue)" }
     $worker = Get-Process -Id $created.ProcessId
