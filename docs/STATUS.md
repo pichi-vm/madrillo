@@ -1,7 +1,7 @@
 # Implementation status
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
-**0 of 3 consecutive clean passes**. C01, C02, C05, and C29 have reviewed
+**0 of 3 consecutive clean passes**. C01, C02, C05, C20, and C29 have reviewed
 coverage ready to execute; the remaining entries are pending. The notes below
 record incremental work and do not supersede the current conformance manifest.
 
@@ -906,3 +906,17 @@ the monitored group. It verifies that the removal notification is not fabricated
 as OOM, the real leader exit is retained, and missing scope observation is reported
 as incomplete. Both real v2 and disposable-VM v1 runs pass; temporary scopes,
 build products and VM files were removed.
+
+Live OOM evidence now follows conmon's retained-marker behavior. V2 inotify and
+v1 eventfd notifications cause a single asynchronous `state-dir/oom` write and
+synchronization, without blocking the supervision loop on storage or adding a
+protocol message. V1 accumulates drained notifications for its final counters.
+Final-only observations also publish the marker. Write/sync failures remain
+separate retained monitor errors; missing completion remains unknown.
+
+Local strict Clippy and all current Rust tests pass. Real cgroup v2 and the
+disposable cgroup v1 VM pass new cases where an OOM victim is a child of a live
+leader, the marker appears before completion, monitor death preserves that
+marker, and a marker-path collision remains an explicit error without replacing
+the existing object. C20 now has reviewed native case mappings ready to execute.
+These results do not increment the full conformance streak; native CI is pending.

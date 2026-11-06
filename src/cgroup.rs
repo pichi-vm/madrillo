@@ -5,11 +5,17 @@ use cap_std::{
     fs::{Dir, OpenOptions},
 };
 use madrillo::OomEvidence;
-use nix::sys::eventfd::{EfdFlags, EventFd};
+use nix::{
+    poll::{PollFd, PollFlags, PollTimeout, poll},
+    sys::{
+        eventfd::{EfdFlags, EventFd},
+        inotify::{AddWatchFlags, InitFlags, Inotify},
+    },
+};
 use std::{
     fs::File,
     io::{self, Read, Write},
-    os::fd::AsRawFd,
+    os::fd::{AsFd, AsRawFd},
     path::Path,
     time::{Duration, Instant},
 };
@@ -23,11 +29,13 @@ pub(crate) struct Cgroup {
 enum Observation {
     Unified {
         baseline: (u64, u64),
+        events: Inotify,
     },
     Legacy {
         _control: File,
         events: EventFd,
         baseline_kills: u64,
+        observed_events: u64,
     },
 }
 impl Cgroup {
@@ -37,7 +45,7 @@ impl Cgroup {
         let (kill, observation) = match fstatfs(&directory)?.filesystem_type() {
             CGROUP2_SUPER_MAGIC => (
                 Some(writable(&directory, "cgroup.kill")?),
-                memory(&directory).map(|baseline| Observation::Unified { baseline }),
+                Observation::unified(&directory),
             ),
             CGROUP_SUPER_MAGIC => (None, Observation::legacy(&directory)),
             _ => {
@@ -108,10 +116,20 @@ impl Cgroup {
         }
         Ok(true)
     }
-    pub(crate) fn oom(&self) -> OomEvidence {
+    pub(crate) fn poll_oom(&mut self) -> io::Result<bool> {
+        let observation = self
+            .observation
+            .as_mut()
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        if !observation.changed()? {
+            return Ok(false);
+        }
+        Ok(observation.delta(&self.directory)? != (0, 0))
+    }
+    pub(crate) fn oom(&mut self) -> OomEvidence {
         let delta = self
             .observation
-            .as_ref()
+            .as_mut()
             .map_err(|error| io::Error::other(error.to_string()))
             .and_then(|observation| observation.delta(&self.directory));
         match delta {
@@ -124,6 +142,31 @@ impl Cgroup {
     }
 }
 impl Observation {
+    fn unified(directory: &Dir) -> io::Result<Self> {
+        let events = Inotify::init(InitFlags::IN_CLOEXEC | InitFlags::IN_NONBLOCK)?;
+        let memory_events = readable(directory, "memory.events")?;
+        // Follow the already-open kernel object, not a second lookup through
+        // the caller's path. Watch before launch so short-lived OOMs are retained.
+        let path = format!("/proc/self/fd/{}", memory_events.as_raw_fd());
+        events.add_watch(path.as_str(), AddWatchFlags::IN_MODIFY)?;
+        Ok(Self::Unified {
+            baseline: memory(directory)?,
+            events,
+        })
+    }
+    fn changed(&self) -> io::Result<bool> {
+        match self {
+            Self::Unified { events, .. } => match events.read_events() {
+                Ok(events) => Ok(!events.is_empty()),
+                Err(nix::errno::Errno::EAGAIN) => Ok(false),
+                Err(error) => Err(error.into()),
+            },
+            Self::Legacy { events, .. } => {
+                let mut descriptors = [PollFd::new(events.as_fd(), PollFlags::POLLIN)];
+                Ok(poll(&mut descriptors, PollTimeout::ZERO)? != 0)
+            }
+        }
+    }
     fn legacy(directory: &Dir) -> io::Result<Self> {
         let baseline_kills = counter(&read(directory, "memory.oom_control")?, "oom_kill")?;
         let control = readable(directory, "memory.oom_control")?;
@@ -136,12 +179,14 @@ impl Observation {
             _control: control,
             events,
             baseline_kills,
+            observed_events: 0,
         })
     }
-    fn delta(&self, directory: &Dir) -> io::Result<(u64, u64)> {
+    fn delta(&mut self, directory: &Dir) -> io::Result<(u64, u64)> {
         let (events, kills, before_events, before_kills) = match self {
             Self::Unified {
                 baseline: (before_events, before_kills),
+                ..
             } => {
                 let (events, kills) = memory(directory)?;
                 (events, kills, *before_events, *before_kills)
@@ -149,6 +194,7 @@ impl Observation {
             Self::Legacy {
                 events,
                 baseline_kills,
+                observed_events,
                 ..
             } => {
                 // Read the still-present kernel counter first. Removal also
@@ -161,7 +207,10 @@ impl Observation {
                 };
                 // Recheck after draining to reject concurrent scope removal.
                 readable(directory, "memory.oom_control")?;
-                (count, kills, 0, *baseline_kills)
+                *observed_events = observed_events
+                    .checked_add(count)
+                    .ok_or_else(|| io::Error::other("OOM event counter overflow"))?;
+                (*observed_events, kills, 0, *baseline_kills)
             }
         };
         Ok((

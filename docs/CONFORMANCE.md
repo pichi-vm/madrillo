@@ -57,3 +57,12 @@ These mappings add required positive markers to the existing native test suite;
 they do not rerun the suite for each requirement. Readiness is a coverage review,
 not a conformance pass. Caller terminal/Job loss remains separately tracked by
 C04, and Windows terminal descendant cleanup remains pending under C07/C09.
+
+C20 is ready to execute with real cgroup v2 and an isolated cgroup v1 VM on
+Linux. Both require pre-launch event registration, bounded OOM allocation,
+final counts, live marker retention across monitor death, explicit marker write
+errors, and rejection of removal as an OOM event. Native Unix signal and Windows
+full-exit-code tests separately require unavailable evidence when no OOM source
+exists; an exit code or signal alone cannot satisfy the requirement. The full
+Linux runner needs the same QEMU/cpio/kernel-download prerequisites as native
+qualification CI; their absence fails the case instead of skipping v1.

@@ -24,6 +24,14 @@ the cgroup until completion. Missing observation support (including v1 event
 registration on PREEMPT_RT), permissions or failed cleanup remain explicit in
 the result.
 
+Linux OOM observation also creates `state-dir/oom` while the workload is still
+running, matching conmon's persistent marker. Native inotify/eventfd notifications
+drive observation; final counters are checked again at completion. The marker
+survives monitor loss and reports an observed workload-scope event, not proof
+that its leader died from OOM. Missing completion remains unknown. Marker write
+or synchronization failures are retained as monitor errors when completion can
+be published; evidence not written before a crash cannot be promised.
+
 On macOS, Madrillo manages the workload process group it creates. Children and
 grandchildren must remain in that group for Madrillo to guarantee their cleanup
 after leader exit, forced stop or timeout. A program that creates another group

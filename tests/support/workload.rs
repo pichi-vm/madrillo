@@ -404,9 +404,36 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         #[cfg(target_os = "linux")]
+        Some("oom-survivor") => {
+            use std::os::unix::process::ExitStatusExt;
+            let root = std::path::Path::new(args.get(1).ok_or("fixture root missing")?);
+            std::fs::write(root.join("oom-ready"), b"ready")?;
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !root.join("oom-start").exists() {
+                if Instant::now() >= deadline {
+                    return Err("OOM fixture start deadline".into());
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let status = Command::new(std::env::current_exe()?)
+                .arg("bounded-oom")
+                .status()?;
+            if status.signal() != Some(9) {
+                return Err(format!("OOM victim was not killed: {status}").into());
+            }
+            std::fs::write(root.join("victim-exited"), b"killed")?;
+            // The leader survives its child's OOM, then cooperates with console
+            // loss. The harness can kill Madrillo without leaking this fixture.
+            if io::stdin().read(&mut [0])? != 0 {
+                return Err("unexpected OOM fixture input".into());
+            }
+            Ok(0)
+        }
+        #[cfg(target_os = "linux")]
         Some("bounded-oom") => {
             // Caller must install a private 32MiB cgroup limit; never stress
             // unbounded host memory even if a test setup is incorrect.
+            std::fs::write("/proc/self/oom_score_adj", b"1000")?;
             let mut chunks = Vec::new();
             for _ in 0..64 {
                 chunks.push(vec![42_u8; 1024 * 1024]);

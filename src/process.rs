@@ -226,11 +226,17 @@ impl Workload {
             Err(error) => Err(error.into()),
         }
     }
-    fn oom(&self) -> OomEvidence {
+    #[cfg(target_os = "linux")]
+    pub(crate) fn poll_oom(&mut self) -> io::Result<bool> {
+        self.group
+            .as_mut()
+            .map_or(Ok(false), |group| group.poll_oom())
+    }
+    fn oom(&mut self) -> OomEvidence {
         #[cfg(target_os = "linux")]
         {
             self.group
-                .as_ref()
+                .as_mut()
                 .map(|group| group.oom())
                 .unwrap_or_else(|| madrillo::OomEvidence::Unavailable {
                     reason: "no cgroup supplied".into(),

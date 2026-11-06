@@ -9,6 +9,7 @@ import contextlib
 import json
 import os
 import signal
+import socket
 from pathlib import Path
 import subprocess
 import sys
@@ -73,6 +74,24 @@ def run(root, group, mode, args=(), flags=(), success=True):
     return json.loads((state / "result.json").read_text())
 
 
+def memory_limit(group):
+    # Bound only this test-owned scope, including swap and a broken-test ceiling.
+    if legacy:
+        (group / "memory.limit_in_bytes").write_text(str(32 * 1024 * 1024))
+        (group / "memory.memsw.limit_in_bytes").write_text(str(32 * 1024 * 1024))
+    else:
+        (group / "memory.max").write_text(str(32 * 1024 * 1024))
+        (group / "memory.swap.max").write_text("0")
+
+
+def wait_for(predicate, process, description):
+    deadline = time.monotonic() + 5
+    while not predicate():
+        assert process.poll() is None, f"monitor exited before {description}"
+        assert time.monotonic() < deadline, f"deadline waiting for {description}"
+        time.sleep(0.005)
+
+
 for terminal in (False, True):
     with scope() as group, tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
@@ -100,17 +119,62 @@ for terminal in (False, True):
 with scope() as group, tempfile.TemporaryDirectory() as tmp:
     # A 32MiB limit and no swap apply only to this new, empty test cgroup.
     # Fixture itself has a 64MiB allocation ceiling if enforcement is broken.
-    if legacy:
-        (group / "memory.limit_in_bytes").write_text(str(32 * 1024 * 1024))
-        (group / "memory.memsw.limit_in_bytes").write_text(str(32 * 1024 * 1024))
-    else:
-        (group / "memory.max").write_text(str(32 * 1024 * 1024))
-        (group / "memory.swap.max").write_text("0")
+    memory_limit(group)
     result = run(Path(tmp), group, "bounded-oom")
     assert result["leader"] == {"type": "signal", "signal": 9, "core_dumped": False}, result
     assert result["cleanup"] == {"type": "complete"}, result
     assert result["oom"]["type"] == "observed" and result["oom"]["kills"] >= 1, result
     assert result["oom"]["events"] >= 1, result
+    assert (Path(tmp) / "state/oom").is_file(), "final OOM evidence was not retained"
+
+for outcome in ("complete", "monitor-loss", "marker-failure"):
+    with scope() as group, tempfile.TemporaryDirectory() as tmp:
+        memory_limit(group)
+        root = Path(tmp)
+        state = root / "state"
+        process = subprocess.Popen(
+            [monitor, "--state-dir", str(state), "--cgroup", str(group),
+             "--timeout", "10", "--", fixture, "oom-survivor", str(root)],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        )
+        try:
+            wait_for((root / "oom-ready").exists, process, "live OOM fixture")
+            if outcome == "marker-failure":
+                (state / "oom").mkdir()
+            (root / "oom-start").write_text("start")
+            wait_for((root / "victim-exited").exists, process, "OOM victim exit")
+            if outcome != "marker-failure":
+                wait_for((state / "oom").is_file, process, "retained live OOM marker")
+            assert process.poll() is None and not (state / "result.json").exists()
+            if outcome == "monitor-loss":
+                process.kill()
+                process.communicate(timeout=5)
+                assert not (state / "result.json").exists(), "monitor death fabricated completion"
+                assert (state / "oom").is_file(), "monitor loss discarded OOM evidence"
+                deadline = time.monotonic() + 5
+                while populated(group):
+                    assert time.monotonic() < deadline, "fixture ignored console loss"
+                    time.sleep(0.005)
+            else:
+                with socket.socket(socket.AF_UNIX) as client:
+                    client.connect(str(state / "control.sock"))
+                    message = json.dumps({"version": 1, "message": {"type": "close_input"}}).encode()
+                    client.sendall(len(message).to_bytes(4, "big") + message)
+                    _, diagnostics = process.communicate(timeout=10)
+                assert process.returncode == 0, diagnostics
+                result = json.loads((state / "result.json").read_text())
+                assert result["leader"] == {"type": "exit", "code": 0}, result
+                assert result["cleanup"] == {"type": "complete"}, result
+                assert result["oom"]["type"] == "observed" and result["oom"]["events"] >= 1 and result["oom"]["kills"] >= 1, result
+                if outcome == "marker-failure":
+                    assert any("retain OOM evidence" in error for error in result["monitor_errors"]), result
+                    assert (state / "oom").is_dir(), "failed marker creation replaced another object"
+                else:
+                    assert not result["monitor_errors"], result
+        finally:
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=5)
 
 with scope() as group, scope() as replacement, tempfile.TemporaryDirectory() as tmp:
     result = run(Path(tmp), group, "remove-cgroup", [group, replacement])
@@ -118,6 +182,7 @@ with scope() as group, scope() as replacement, tempfile.TemporaryDirectory() as 
     assert result["oom"]["type"] == "unavailable", result
     assert result["cleanup"]["type"] == "incomplete", result
     assert not group.exists(), "fixture did not remove the monitored cgroup"
+    assert not (Path(tmp) / "state/oom").exists(), "removal fabricated an OOM marker"
 
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
@@ -129,4 +194,4 @@ with tempfile.TemporaryDirectory() as tmp:
     assert result["leader"]["type"] == "spawn_failed", result
     assert (fake / "cgroup.kill").read_text() == "sentinel"
 
-print(f"cgroup v{1 if legacy else 2} qualification: pre-exec placement + escaped descendants with pipe/PTY; bounded OOM evidence; removal is not OOM; fake-filesystem rejection passed", flush=True)
+print(f"cgroup v{1 if legacy else 2} qualification: pre-exec placement + escaped descendants with pipe/PTY; bounded OOM evidence; live evidence survives monitor loss; marker errors retained; removal is not OOM; fake-filesystem rejection passed", flush=True)

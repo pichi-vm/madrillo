@@ -8,6 +8,7 @@ use std::{
 
 pub(crate) struct State {
     directory: PathBuf,
+    oom: Option<std::sync::mpsc::Receiver<io::Result<()>>>,
 }
 
 impl State {
@@ -35,7 +36,46 @@ impl State {
         }
         Ok(Self {
             directory: path.to_owned(),
+            oom: None,
         })
+    }
+
+    pub(crate) fn retain_oom(&mut self) -> io::Result<()> {
+        if self.oom.is_some() {
+            return Ok(());
+        }
+        let directory = self.directory.clone();
+        let (done, complete) = std::sync::mpsc::sync_channel(1);
+        std::thread::Builder::new()
+            .name("madrillo-oom-state".into())
+            .spawn(move || {
+                let write = || -> io::Result<()> {
+                    std::fs::File::options()
+                        .write(true)
+                        .create_new(true)
+                        .open(directory.join("oom"))?
+                        .sync_all()?;
+                    #[cfg(unix)]
+                    fs::File::open(&directory)?.sync_all()?;
+                    Ok(())
+                };
+                let _ = done.send(write());
+            })?;
+        self.oom = Some(complete);
+        Ok(())
+    }
+
+    pub(crate) fn finish_oom(&self) -> io::Result<()> {
+        if let Some(complete) = &self.oom {
+            complete
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .map_err(|error| {
+                    io::Error::other(format!(
+                        "OOM evidence publication did not complete: {error}"
+                    ))
+                })??;
+        }
+        Ok(())
     }
 
     pub(crate) fn publish(&self, result: &Completion) -> io::Result<()> {
@@ -45,7 +85,7 @@ impl State {
         std::thread::Builder::new()
             .name("madrillo-state".into())
             .spawn(move || {
-                let _ = done.send(Self { directory }.write(&result));
+                let _ = done.send(Self::write(&directory, &result));
             })?;
         complete
             .recv_timeout(std::time::Duration::from_secs(5))
@@ -56,16 +96,16 @@ impl State {
             })?
     }
 
-    fn write(&self, result: &Completion) -> io::Result<()> {
-        let mut temporary = tempfile::NamedTempFile::new_in(&self.directory)?;
+    fn write(directory: &Path, result: &Completion) -> io::Result<()> {
+        let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
         serde_json::to_writer(&mut temporary, result)?;
         temporary.write_all(b"\n")?;
         temporary.as_file().sync_all()?;
         temporary
-            .persist_noclobber(self.directory.join("result.json"))
+            .persist_noclobber(directory.join("result.json"))
             .map_err(|error| error.error)?;
         #[cfg(unix)]
-        fs::File::open(&self.directory)?.sync_all()?;
+        fs::File::open(directory)?.sync_all()?;
         Ok(())
     }
 }

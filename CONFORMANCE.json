@@ -282,8 +282,13 @@
       "id": "C20",
       "behavior": "OOM evidence",
       "criterion": "Linux cgroup v1/v2 events/final checks and evidence retention; SIGKILL never fabricated as OOM; other platforms report actual available evidence",
-      "status": "pending",
-      "tests": [],
+      "status": "ready",
+      "tests": [
+        "linux-cgroup-v2",
+        "linux-cgroup-v1",
+        "native-unix-signal-evidence",
+        "native-windows-exit-evidence"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -548,6 +553,91 @@
       "success_markers": [
         "madrillo 0.1.0",
         "dependency license entries"
+      ]
+    },
+    {
+      "id": "linux-cgroup-v2",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "python3",
+        "tools/check_cgroup.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture",
+        "/sys/fs/cgroup"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "cgroup v2 qualification:",
+        "live evidence survives monitor loss; marker errors retained; removal is not OOM; fake-filesystem rejection passed"
+      ]
+    },
+    {
+      "id": "linux-cgroup-v1",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "python3",
+        "tools/check_cgroup_v1.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 900,
+      "success_markers": [
+        "cgroup v1 qualification:",
+        "live evidence survives monitor loss; marker errors retained; removal is not OOM; fake-filesystem rejection passed",
+        "MADRILLO_CGROUP_V1_PASS"
+      ]
+    },
+    {
+      "id": "native-unix-signal-evidence",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "native_signals_are_distinct_from_numeric_exit_codes_and_oom",
+        "--",
+        "--exact"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test native_signals_are_distinct_from_numeric_exit_codes_and_oom ... ok"
+      ]
+    },
+    {
+      "id": "native-windows-exit-evidence",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "full_windows_exit_bits_survive_pipe_and_terminal_supervision",
+        "--",
+        "--exact"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test full_windows_exit_bits_survive_pipe_and_terminal_supervision ... ok"
       ]
     }
   ]

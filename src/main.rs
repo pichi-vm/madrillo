@@ -276,7 +276,7 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
         })
         .collect::<io::Result<Vec<_>>>()?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
-    let state = State::create(directory)?;
+    let mut state = State::create(directory)?;
     #[cfg(unix)]
     let (original_oom_score, oom_warning) = oom::protect();
     #[cfg(unix)]
@@ -316,6 +316,7 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
         &cli,
         &mut connections,
         &mut result,
+        &mut state,
         activation.as_ref(),
         extra,
         diagnostics,
@@ -335,6 +336,18 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
     }
     drop(held);
     connections.close_listener();
+    if matches!(result.oom, OomEvidence::Observed { .. })
+        && let Err(error) = state.retain_oom()
+    {
+        result
+            .monitor_errors
+            .push(format!("retain OOM evidence: {error}"));
+    }
+    if let Err(error) = state.finish_oom() {
+        result
+            .monitor_errors
+            .push(format!("retain OOM evidence: {error}"));
+    }
     for warning in &result.monitor_warnings {
         diagnostics.emit(Level::Warn, format_args!("{warning}"));
     }
@@ -433,6 +446,7 @@ fn supervise(
     cli: &Cli,
     connections: &mut Connections,
     result: &mut Completion,
+    #[cfg_attr(not(target_os = "linux"), allow(unused_variables))] state: &mut State,
     activation: Option<&activation::Activation>,
     extra: Vec<(String, logging::extra::Reader)>,
     diagnostics: &mut Diagnostics,
@@ -667,7 +681,29 @@ fn supervise(
         (result.leader, result.cleanup, result.oom) = child.finish(cleanup_errors);
         return Err(error.into());
     }
+    #[cfg(target_os = "linux")]
+    let mut observe_oom = true;
     loop {
+        #[cfg(target_os = "linux")]
+        if observe_oom {
+            match child.poll_oom() {
+                Ok(true) => {
+                    observe_oom = false;
+                    if let Err(error) = state.retain_oom() {
+                        result
+                            .monitor_errors
+                            .push(format!("retain OOM evidence: {error}"));
+                    }
+                }
+                Ok(false) => {}
+                Err(error) => {
+                    observe_oom = false;
+                    result
+                        .monitor_warnings
+                        .push(format!("live OOM observation unavailable: {error}"));
+                }
+            }
+        }
         #[cfg(unix)]
         for signal in signals
             .pending()

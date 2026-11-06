@@ -605,9 +605,9 @@ fn full_windows_exit_bits_survive_pipe_and_terminal_supervision()
             assert_eq!(result.leader, LeaderResult::Exit { code });
             assert_eq!(result.cause, CompletionCause::LeaderExit);
             assert!(result.exited_at_unix_ms > 0);
-            assert!(!matches!(
+            assert!(matches!(
                 result.oom,
-                madrillo::OomEvidence::Observed { .. }
+                madrillo::OomEvidence::Unavailable { .. }
             ));
         }
     }
@@ -637,9 +637,9 @@ fn native_signals_are_distinct_from_numeric_exit_codes_and_oom()
             );
             assert_eq!(result.cause, CompletionCause::LeaderExit);
             assert!(result.exited_at_unix_ms > 0);
-            assert!(!matches!(
+            assert!(matches!(
                 result.oom,
-                madrillo::OomEvidence::Observed { .. }
+                madrillo::OomEvidence::Unavailable { .. }
             ));
         }
     }

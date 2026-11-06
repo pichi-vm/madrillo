@@ -115,7 +115,9 @@ groups/sessions, until `waitid` with `__WALL` confirms `ECHILD`. A cgroup suppli
 by the caller adds pre-exec placement, resource accounting and a final population
 check. V2 adds atomic subtree termination; v1 uses subreaper cleanup. V1 OOM
 observation registers an eventfd before launch and checks the final kill counter;
-v2 uses `memory.events`. Windows needs a Job Object with early
+v2 watches `memory.events` with inotify. Observed events create a retained `oom`
+marker during execution; final observation never infers OOM from an exit signal.
+Windows needs a Job Object with early
 membership. The user approved the native conmon process-group contract for
 macOS on 2026-11-05: Madrillo creates a workload process group and stops its
 members, including ordinary children and grandchildren. Workloads must keep
