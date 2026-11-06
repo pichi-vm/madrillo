@@ -437,7 +437,7 @@
       "id": "C28",
       "behavior": "Crash reconciliation",
       "criterion": "Missing results remain unknown; engine cleanup is idempotent; monitor death cannot claim a callback ran",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
         "native-pichi-caller-unix",

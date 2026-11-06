@@ -2,8 +2,8 @@
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
 **0 of 3 consecutive clean passes**. The current [manifest](../CONFORMANCE.json)
-has 20 requirements with reviewed executable coverage. C04, C07, C09, C10,
-C18, C19, C24, C26, C27 and C28 remain pending. Readiness is not a pass.
+has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
+C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
 
 The macOS scope decision is settled: descendants must remain in the workload's
 managed process group. Dillo owns shutdown for any helper it deliberately moves
@@ -34,13 +34,16 @@ detach, duplicate-use rejection, independent exit-callback cleanup, preservation
 when completion is missing or incomplete, and real Windows caller-window closure.
 The PR is mergeable again; no PR has been merged.
 
-Pichi `5ee1d20d` adds actual monitor-crash reconciliation: repeated wait, stop,
+Pichi `5ee1d20d` passes [native caller qualification on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42178764461),
+including actual monitor-crash reconciliation: repeated wait, stop,
 attach and cleanup preserve unknown state, image pins, storage and partial build
 output. Madrillo also tests crashes before result publication and after publication
 but before a delayed exit callback. The latter retains the workload result without
-claiming that the callback ran. Local native tests pass; native CI is pending.
-The shared caller qualification command now has C28 case mappings, which remain
-pending until the cross-platform review finishes.
+claiming that the callback ran. Native qualification and distribution pass on all
+three hosts in [run 42178753828](https://github.com/pichi-vm/madrillo/actions/runs/42178753828),
+including macOS diagnostic stress; [RPM qualification also passes](https://github.com/pichi-vm/madrillo/actions/runs/42178753993).
+C28 has reviewed executable mappings ready for
+full conformance; this qualification does not increment the streak.
 
 Dillo `6086bf1` passes Linux and Windows VM CI, including sustained unread guest
 input before monitor death and observed cooperative zero exit:

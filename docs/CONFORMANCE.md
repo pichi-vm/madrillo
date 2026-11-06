@@ -70,6 +70,15 @@ and locked build qualification remain separate requirements. Madrillo's native
 control tests additionally kill the monitor before publication and between
 publication and a delayed exit callback, checking retained evidence in each case.
 
+C28 is ready to execute on all three hosts. Source review confirms that Pichi
+reconnects through the private endpoint and reads retained completion; it never
+kills a process identified only by a recorded PID. Missing completion stays
+unknown. Reconciliation removes disposable storage only after confirmed complete
+cleanup, and the same operation is safe to repeat. Native fixtures preserve
+storage, partial build output and image pins after a real monitor crash; existing
+publication-failure cases also withhold callbacks. A published workload result
+records workload completion only and does not assert that an exit callback ran.
+
 ## Reviewed native launch and reconnection coverage
 
 C02 is ready to execute on all three native hosts. The required positive markers
