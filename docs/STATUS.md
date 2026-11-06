@@ -5,18 +5,28 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
 C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
 
-Pichi `fc5b019b` adds an explicit native Windows CLI terminal case: real
-`run`/`attach` inside ConPTY, initial size and resize, raw input, detach,
-reattachment, initially detached startup, cooperative stop, and native input-mode
-restoration in the same console. The qualification harness requires its success
-marker; native execution is pending. Local Linux run and packaging tests pass.
-The test host is a development dependency and adds no product launch fallback.
-Compiled stub fixtures now release their temporary build directory immediately.
+Pichi's native Windows CLI fixture exercises real `run`/`attach` inside
+ConPTY, initial size and resize, raw input, detach, reattachment, initially
+detached startup, cooperative stop, and native input-mode restoration in the
+same console. Its [first native runs](https://github.com/pichi-vm/madrillo/actions/runs/42184880737)
+exposed a real resize-delivery race: the synchronous Windows pipe listener
+discards clients that close before accept. The older asynchronous-only endpoint
+test did not cover Dillo's listener behavior. No Windows CLI terminal pass is
+claimed.
+
+Pichi `891cb687` retains the four-byte connection until Dillo closes it after
+consumption, under the existing one-second timeout. It adds no response payload
+or flush worker. Delayed synchronous acceptance, reconnection, a receiver that
+never closes, and the Unix interactive terminal regression pass locally. Native
+Windows retesting is pending. The terminal host is a development dependency,
+and compiled stub fixtures release their temporary build directory immediately.
 
 Pichi's host-packaging patch is fixed in `ecb56fdb`; it retains the now-runtime
 `dillo-config` dependency. Dillo `d39ab98` integrates main's explicit device-bus
 contract. Local native resize, console EOF, buffered-input monitor crash, unit,
-CLI and strict Clippy checks pass after updating fixture arguments. Pichi still
+CLI and strict Clippy checks pass after updating fixture arguments.
+[Focused Linux x86 and Windows VM qualification passes](https://github.com/pichi-vm/madrillo/actions/runs/42184020365);
+ARM64 VM jobs remain queued. Dillo `88d507c` documents resize connection completion. Pichi still
 pins Dillo `7030527`: adopting the new Dillo requires resolving image transport
 preferences into explicit per-device placements on the caller side. The two
 component qualification pins do not yet prove an integrated final product.

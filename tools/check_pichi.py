@@ -37,7 +37,7 @@ def main():
         "test cmd::workload::record::tests::missing_records_are_read_only_and_partial_publication_fails_closed ... ok",
         "test cmd::workload::record::tests::image_gc_preserves_pins_and_guest_selected_build_inputs ... ok",
         "test detached_storage_stays_reserved_until_workload_exit ... ok",
-        "test cmd::workload::resize::tests::resize_reconnects_and_delivers_before_client_close ... ok",
+        "test cmd::workload::resize::tests::resize_reconnects_after_receiver_consumes_each_update ... ok",
     ]
     native = ["native_monitor_launch_and_async_control",
               "monitor_crash_preserves_unknown_state_and_cleanup_inputs"]
