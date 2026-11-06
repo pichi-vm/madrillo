@@ -10,9 +10,10 @@ import sys
 
 def run(command, pichi, environment, markers, timeout=1500):
     result = subprocess.run(command, cwd=pichi, env=environment,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, encoding="utf-8", errors="replace", timeout=timeout)
     print(result.stdout, end="", flush=True)
+    print(result.stderr, end="", flush=True)
     result.check_returncode()
     for marker in markers:
         assert marker in result.stdout, f"missing native execution evidence: {marker}"

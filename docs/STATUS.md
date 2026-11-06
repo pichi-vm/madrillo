@@ -28,6 +28,18 @@ An additional strict Pichi Clippy check found existing diagnostics outside the
 changed workload files (including workspace dependencies). It is not claimed
 as passing. Pichi's native caller tests and formatting passed locally.
 
+The next run [42245824004](https://github.com/pichi-vm/madrillo/actions/runs/42245824004)
+passed all three macOS and Windows rounds, including the corrected pressure
+fixture. Linux rounds one and three passed; every command in round two also
+returned success, but one required Rust test-result line was corrupted by a
+concurrent monitor warning written to the merged stdout/stderr file. The strict
+evidence check therefore rejected that round. Log capture now keeps separate
+stream descriptors during execution and appends retained stderr afterward;
+the nested Pichi test wrapper also captures its streams separately. A forced
+interleaving reproducer fails the old capture and preserves both the exact
+success marker and diagnostic with the correction. No markers or previous
+reports were relaxed or rewritten. Fresh full qualification is required again.
+
 The [final audit](reviews/07-completion.md) verifies all nine native reports,
 186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.
 The `conformance-evidence` artifact includes each round's reports and logs.

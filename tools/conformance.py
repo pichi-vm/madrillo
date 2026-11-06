@@ -11,8 +11,10 @@ import json
 from pathlib import Path
 import platform
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -132,14 +134,21 @@ def run(args):
             log = args.report.parent / (args.report.stem + f"-{name}.log")
             log.parent.mkdir(parents=True, exist_ok=True)
             started = time.monotonic()
-            with log.open("wb") as output:
+            # Separate descriptors prevent child diagnostics from corrupting a
+            # test harness's stdout result lines. Retain both complete streams
+            # in the hashed artifact after execution, without relaxing markers.
+            with log.open("wb") as output, tempfile.TemporaryFile() as diagnostic:
                 try:
-                    result = subprocess.run(case["command"], cwd=ROOT, stdout=output, stderr=subprocess.STDOUT,
+                    result = subprocess.run(case["command"], cwd=ROOT, stdout=output, stderr=diagnostic,
                                             timeout=case["timeout"], check=False)
                     code = result.returncode
                 except (OSError, subprocess.TimeoutExpired) as error:
                     output.write(str(error).encode())
                     code = None
+                if diagnostic.tell():
+                    output.write(b"\n[stderr]\n")
+                    diagnostic.seek(0)
+                    shutil.copyfileobj(diagnostic, output)
             text = log.read_text(encoding="utf-8", errors="replace")
             passed = code == 0 and all(marker in text for marker in case.get("success_markers", []))
             report["cases"][name] = {"passed": passed, "returncode": code, "command": case["command"],
