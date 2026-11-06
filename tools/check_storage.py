@@ -47,6 +47,57 @@ def traced(command, retained_state=None):
             process.wait(timeout=5)
 
 
+def failed_publication(state, marker, trace=None):
+    parent, initial = socket.socketpair()
+    parent.settimeout(10)
+    command = [str(monitor), "--state-dir", str(state), "--control", str(initial.fileno()),
+               "--log-path", "none", "--exit-command", str(fixture)]
+    for argument in ["touch", str(marker)]:
+        command += ["--exit-command-arg", argument]
+    command += ["--", str(fixture), "emit"]
+    if trace is not None:
+        # The exact directory path targets the post-rename directory fsync,
+        # leaving the temporary result file's synchronization untouched.
+        command = ["strace", "-f", "-e", "trace=fsync", "-e", "inject=fsync:error=EIO",
+                   "-P", str(state), "-o", str(trace)] + command
+    process = subprocess.Popen(command, pass_fds=(initial.fileno(),),
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    initial.close()
+    try:
+        output, errors = process.communicate(timeout=10)
+        assert process.returncode != 0, (output, errors)
+        expected = b"Input/output error" if trace is not None else b"No space left"
+        assert expected in errors, errors
+        packets = b""
+        while True:
+            packet = parent.recv(65536)
+            if not packet:
+                break
+            packets += packet
+        while len(packets) >= 4:
+            length = struct.unpack(">I", packets[:4])[0]
+            if len(packets) < length + 4:
+                break
+            message = json.loads(packets[4:length + 4])
+            assert message["message"]["type"] != "completed", message
+            packets = packets[length + 4:]
+        if trace is not None:
+            assert "(INJECTED)" in trace.read_text(), "directory fsync fault was not exercised"
+            # Rename has already published valid facts, but failed directory
+            # synchronization must not acknowledge durable completion or run
+            # the exit hook. Preserve the known leader status on disk.
+            assert result(state)["leader"] == {"type": "exit", "code": 37}
+        else:
+            assert not (state / "result.json").exists(), "failed write published a result"
+        assert not marker.exists(), "exit command ran after failed publication"
+    finally:
+        parent.close()
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+
+
 with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
     root = Path(temporary)
     for no_sync in (False, True):
@@ -88,6 +139,9 @@ with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
         if mode == "emit":
             assert retained["leader"] == {"type": "exit", "code": 37}, retained
 
+    failed_publication(root / "directory-sync-state", root / "no-sync-callback",
+                       root / "directory-sync.trace")
+
     full = root / "full"
     full.mkdir()
     subprocess.run(["mount", "-t", "tmpfs", "-o", "size=64k,mode=0700", "madrillo-fault", str(full)], check=True)
@@ -104,41 +158,8 @@ with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
         # The full filesystem can still allocate an empty directory/inode but
         # cannot publish the result data. No final acknowledgement or callback
         # may claim completion when retained publication fails.
-        state = full / "publication-state"
-        marker = root / "must-not-run"
-        parent, initial = socket.socketpair()
-        parent.settimeout(10)
-        command = [str(monitor), "--state-dir", str(state), "--control", str(initial.fileno()),
-                   "--log-path", "none", "--exit-command", str(fixture)]
-        for argument in ["touch", str(marker)]:
-            command += ["--exit-command-arg", argument]
-        command += ["--", str(fixture), "emit"]
-        process = subprocess.Popen(command, pass_fds=(initial.fileno(),), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        initial.close()
-        try:
-            output, errors = process.communicate(timeout=10)
-            assert process.returncode != 0, (output, errors)
-            assert b"No space left" in errors, errors
-            packets = b""
-            while True:
-                packet = parent.recv(65536)
-                if not packet:
-                    break
-                packets += packet
-            while len(packets) >= 4:
-                length = struct.unpack(">I", packets[:4])[0]
-                if len(packets) < length + 4:
-                    break
-                message = json.loads(packets[4:length + 4])
-                assert message["message"]["type"] != "completed", message
-                packets = packets[length + 4:]
-            assert not (state / "result.json").exists(), "failed publication left a successful-looking result"
-            assert not marker.exists(), "exit command ran after failed publication"
-        finally:
-            parent.close()
-            if process.poll() is None:
-                process.kill()
-                process.wait(timeout=5)
+        failed_publication(full / "publication-state", root / "must-not-run")
     finally:
         subprocess.run(["umount", str(full)], check=True, timeout=5)
 print("Storage fault qualification passed: fsync error/opt-out, bounded blocked write/fsync and full disk, failed publication without final acknowledgement or callback")
+print("Directory synchronization failure: known result preserved; no completion acknowledgement or exit callback")

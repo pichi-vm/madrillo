@@ -185,6 +185,12 @@ The ordinary blocked diagnostic-pipe test runs natively on every host and
 requires monitor exit as well as retained timeout/flush errors. These additions
 do not promote the still-pending pressure/durability requirements.
 
+The storage suite also injects EIO into the exact state directory's post-rename
+fsync. The monitor must fail visibly without sending Completed or running the
+exit command, while preserving the already published leader status. This differs
+from a full-filesystem failure before publication, which must leave no result.
+Neither record presence nor missing acknowledgement proves an exit hook ran.
+
 C25 is ready to execute. Positive markers cover version, invalid lengths and
 encoding, unknown messages, truncated frames, bounded outgoing encoding, and
 CLI help/version/API identity without creating state. Real clients leave partial

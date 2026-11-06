@@ -32,6 +32,17 @@ that its leader died from OOM. Missing completion remains unknown. Marker write
 or synchronization failures are retained as monitor errors when completion can
 be published; evidence not written before a crash cannot be promised.
 
+File logs synchronize by default; `--no-sync-log` disables that step, not result
+publication. A retained result is written to a temporary file, synchronized and
+renamed without overwriting another result. Unix also synchronizes the containing
+directory. A publication failure returns a monitor error and withholds the final
+completion message and exit command. If directory synchronization fails after
+the rename, the valid result remains available, but its presence alone does not
+prove synchronization succeeded. Result data records workload facts, not an
+acknowledgement that an exit callback ran. Filesystem and device guarantees still
+apply; Windows rename publication does not provide a directory-flush or universal
+power-loss guarantee.
+
 On macOS, Madrillo manages the workload process group it creates. Children and
 grandchildren must remain in that group for Madrillo to guarantee their cleanup
 after leader exit, forced stop or timeout. A program that creates another group

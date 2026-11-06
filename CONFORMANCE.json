@@ -1011,7 +1011,8 @@
       ],
       "timeout": 90,
       "success_markers": [
-        "Storage fault qualification passed: fsync error/opt-out, bounded blocked write/fsync and full disk, failed publication without final acknowledgement or callback"
+        "Storage fault qualification passed: fsync error/opt-out, bounded blocked write/fsync and full disk, failed publication without final acknowledgement or callback",
+        "Directory synchronization failure: known result preserved; no completion acknowledgement or exit callback"
       ]
     },
     {
