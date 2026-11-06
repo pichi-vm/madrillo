@@ -472,3 +472,39 @@ ownership. The original preconnected channel remains a transferred capability.
 Native client checks, full build integration, stop/logs and signal/resize remain
 unfinished. Pichi's changes are local while repository visibility/CI access is
 awaiting the user's answer; the full conformance streak remains zero.
+
+The user clarified that console closure defines dillo's lifetime by default.
+The opt-in flag was an unnecessary compatibility assumption and is removed in
+dillo revision `99c22fe`. Native pipe/terminal hangup detection still handles
+unread buffered input; the ordinary stdin producer handles other EOF/read
+failures. Pichi no longer injects a lifetime flag. A caller's detach releases
+its attachment while madrillo retains the workload console writer.
+
+All 22 local KVM boot tests pass at this revision, including null-input EOF,
+ordinary guest input followed by writer closure, and abrupt monitor loss with
+cooperative dillo exit zero. The first parallel full run encountered an
+unrelated network-port collision; the isolated retry and complete serial run
+passed. Console unit tests (39), formatting and Clippy pass locally. PR 92 was
+returned to draft, updated and pushed for fresh native-platform qualification;
+the older revision's green checks do not qualify this change. Full conformance
+remains pending with a streak of zero.
+
+Pichi revision `698b30cf` now shares monitor launch between run and build.
+Build transfers its original named-port descriptors at their original numbers;
+madrillo does not interpret the guest API. Four local CLI qualification tests
+cover binary console input, detached discovery, guest-first build exchange with
+OCI import, and invalid-request termination without import. The regression
+selection passes 127 unit tests plus 24 CLI tests. The explicit real KVM smoke
+also passes: the published Conglobate appliance completes its build, powers off,
+and the host imports the output. That smoke used a 120-second monitor runtime
+limit to bound failure; normal guest exit completed in about four seconds.
+
+Pichi does not yet provision a workload cgroup, so that run correctly retained
+its image pins and output with incomplete descendant-cleanup evidence. Windows
+extra-handle inheritance and the other caller gaps remain open. Pichi's branch
+is pushed without a PR. Its ordinary CI was explicitly skipped because the
+library repository remains private and no cross-repository credential exists.
+A manual qualification workflow in this private repository instead checks out
+both source revisions and redirects only Cargo's Git fetch transport to the
+authenticated local monitor checkout. It does not publish private sources or
+change repository visibility. Native caller results are pending.

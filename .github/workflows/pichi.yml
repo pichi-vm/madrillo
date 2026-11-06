@@ -1,0 +1,92 @@
+name: Native pichi caller qualification (not full conformance)
+
+on:
+  workflow_dispatch:
+    inputs:
+      pichi_revision:
+        description: Exact pichi commit to qualify
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  caller:
+    name: Pichi ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Require an immutable pichi revision
+        env:
+          PICHI_REVISION: ${{ inputs.pichi_revision }}
+        run: |
+          python3 - <<'PY'
+          import os, re
+          assert re.fullmatch(r"[0-9a-f]{40}", os.environ["PICHI_REVISION"])
+          PY
+      - uses: actions/checkout@v4
+        with:
+          path: monitor
+          fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          repository: pichi-vm/pichi
+          ref: ${{ inputs.pichi_revision }}
+          path: pichi
+      - name: Install pinned toolchains
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal
+          rustup toolchain install nightly-2026-07-06 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            monitor -> target
+            pichi -> target
+      - name: Use the authenticated local library checkout
+        # Cargo keeps the original git identity and pinned revision. Only its
+        # transport is redirected to this private checkout; no token is copied
+        # into pichi and no private source is published in another repository.
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          monitor = Path(os.environ["GITHUB_WORKSPACE"]) / "monitor"
+          binary = monitor / "target/debug" / ("madrillo.exe" if os.name == "nt" else "madrillo")
+          values = {
+              "CARGO_NET_GIT_FETCH_WITH_CLI": "true",
+              "GIT_CONFIG_COUNT": "1",
+              "GIT_CONFIG_KEY_0": "url." + monitor.resolve().as_uri() + ".insteadOf",
+              "GIT_CONFIG_VALUE_0": "https://github.com/pichi-vm/madrillo",
+              "PICHI_MADRILLO": str(binary),
+              "MADRILLO_BIN": str(binary),
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              for key, value in values.items():
+                  output.write(f"{key}={value}\n")
+          PY
+      - name: Record source identities
+        run: |
+          git -C monitor rev-parse HEAD
+          git -C pichi rev-parse HEAD
+      - name: Build native monitor and workload fixture
+        working-directory: monitor
+        run: cargo +1.94.0 build --locked --features qualification --bins
+      - name: Pichi formatting
+        working-directory: pichi
+        run: cargo +nightly-2026-07-06 fmt --all -- --check
+      - name: Caller unit and CLI qualification
+        working-directory: pichi
+        run: cargo +nightly-2026-07-06 test --locked -p pichi --lib --test cmd_workload --test cmd_build --test cmd_run --test cmd_rmi
+      - name: Native initial channel and reconnect
+        working-directory: pichi
+        run: cargo +nightly-2026-07-06 test --locked -p pichi --lib native_monitor_launch_and_async_control -- --ignored --nocapture
+      - name: Scope of this evidence
+        run: echo 'Caller qualification only. This is not a complete VM/platform or C01-C30 conformance pass.'
