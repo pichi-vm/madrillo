@@ -1,149 +1,64 @@
 # Implementation status
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
-**0 of 3 consecutive clean passes**. The current [manifest](../CONFORMANCE.json)
-has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
-C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
+**0 of 3 consecutive clean passes**. The [manifest](../CONFORMANCE.json) has
+23 requirements with reviewed executable coverage. C07, C09, C10, C18, C19,
+C26 and C27 remain pending. Readiness is not a full conformance pass.
 
-Pichi's native caller qualification now passes on Linux, macOS and Windows
-MSVC in [run 42185840826](https://github.com/pichi-vm/madrillo/actions/runs/42185840826).
-The Windows CLI fixture runs actual `run`/`attach` inside ConPTY and verifies
-initial size, resize, raw input, detach, reattachment, detached startup, stop
-and input-mode restoration in the same console. The delayed synchronous
-resize receiver regression also executes successfully on Windows.
+Madrillo's native tests, strict checks, diagnostics and distribution pass on
+Linux, macOS and Windows MSVC at `9e4fc55` in
+[run 42191419744](https://github.com/pichi-vm/madrillo/actions/runs/42191419744).
+Production Rust sources remain unchanged since `30437e1`; recent changes add
+qualification, caller integration, and CI corrections.
 
-The resize fix retains the four-byte connection until Dillo consumes it and
-closes, bounded by the existing one-second timeout. It adds no response payload
-or flush worker. Pichi `51518df6` has the same source tree as the qualified
-`891cb687`; only two commit bodies were rewrapped to pass commit-message lint.
+The generic C04 caller fixture covers pipe and terminal workloads, attached and
+initially detached startup, normal exit, caller process-group/Job loss, and actual
+terminal closure. All twelve cases execute successfully on all three hosts in
+[run 42191419161](https://github.com/pichi-vm/madrillo/actions/runs/42191419161).
+`b59e251` additionally requires the caller to be alive immediately before each
+loss; [native verification passes on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42191893594).
+C04 now has reviewed executable coverage ready for full conformance. Windows ConPTY still reports incomplete descendant-cleanup evidence;
+the lifetime fixture does not waive C07's Job-empty requirement.
 
-Pichi's host-packaging patch retains the now-runtime `dillo-config` dependency.
-Dillo `d39ab98` integrates main's explicit device-bus contract, with `88d507c`
-documenting resize completion. The superseded focused run passed Linux x86 and
-Windows, then failed ARM64 runner setup; its remaining queued job was cancelled.
-In [run 42189290251](https://github.com/pichi-vm/madrillo/actions/runs/42189290251),
-Windows passed and Linux x86 hit a guest boot deadline. The same four VM cases,
-including full-buffer monitor loss and resize, pass locally on Linux/KVM and
-on hosted Linux x86 and Windows in [run 42190578920](https://github.com/pichi-vm/madrillo/actions/runs/42190578920).
-The earlier boot failure is not reproduced or explained. Linux ARM64/macOS jobs
-remain queued; superseded queued jobs were cancelled rather than duplicated.
+Pichi `11095377` passes native caller qualification on all three hosts in both
+runs, including real Windows Job/window loss, interactive run/attach input,
+resize, detach, reattachment, initially detached startup and terminal restoration.
+The shared Windows Cargo runner uses an argument array to preserve native paths.
+The denied-breakaway case stays inside Cargo's restrictive Job. Timeout-cleanup
+tests stop independent workloads after client exit and require complete retained
+cleanup; the fixture releases its own Windows file lock before rereading data.
 
-Pichi `2907aa45` now resolves image transport preferences against the bundled
-PMI base DT and supplies explicit per-device buses. It preserves fallback when
-a preferred bus is absent or full, rejects exhausted capacity, and pins Dillo
-`88d507c` across Cargo and appliance packaging. Both x86-64 and ARM64 metadata
-fixtures execute locally, along with build-port handle preservation. Linux
-caller qualification passes 149 unit tests, 37 CLI tests and both explicit
-native launch/crash cases; packaging and formatting pass. [Native caller qualification also passes on Linux, macOS and Windows
-MSVC](https://github.com/pichi-vm/madrillo/actions/runs/42188005874).
+C24 now has real VM evidence on Linux, macOS and Windows. Dillo `88d507c` passes
+ordinary input, console EOF, full-buffer monitor loss and guest resize on hosted
+Linux x86 and Windows in [run 42190578920](https://github.com/pichi-vm/madrillo/actions/runs/42190578920).
+The same cases, including explicit monitor-crash execution with Madrillo
+`30437e1`, pass on macOS/HVF in [Dillo's native CI job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493463).
+The non-consuming full-pipe liveness unit test also passes there. An earlier
+hosted Linux boot timeout has not reproduced or been explained. Linux ARM64
+remains queued, as does the focused workflow's separate macOS job; no absent
+runner is counted as a pass.
 
-Pichi `36d9e608` updates timeout cleanup to stop the independent workloads by
-retained ID and require complete cleanup. The real-process regression covers
-both foreground and already-detached clients. The official-image build and
-committed-submodule VM suite pass locally on Linux/KVM: guest-first build input,
-OCI output import, guest poweroff, and expected submodule rejection cases all
-execute. The full staged-image create/extend/compose build-and-boot suite also
-passes locally (359.72 seconds), using pinned static guest tools that were
-removed after the run. These do not complete the full native VM/build matrix.
+Linux/KVM also passes the official-image build, committed-submodule cases, and
+full staged-image create/extend/compose build-and-boot suite (359.72 seconds).
+These ran at Pichi `36d9e608`; subsequent Pichi changes only fix test execution.
+Pinned static guest tools and other task-owned temporary files were removed.
+Full native Pichi/VM/build qualification remains incomplete. Pichi resolves
+PMI-declared bus capacity before launching Dillo, preserves guest-first build
+traffic, and keeps resize a direct Pichi–Dillo channel.
 
-Pichi now provides the Cargo runner used for native Windows test execution
-outside restrictive runner/Cargo Jobs. Madrillo's focused qualification reuses
-it, removing the duplicate Windows host script. Linux and macOS pass at
-`36d9e608` in [run 42189287103](https://github.com/pichi-vm/madrillo/actions/runs/42189287103).
-Windows failed before tests because Cargo's string runner preserves shell quotes
-literally. Pichi `186071de` and this harness use Cargo's TOML argument array;
-the corrected runner executes tests in [run 42190309184](https://github.com/pichi-vm/madrillo/actions/runs/42190309184).
-That run exposed a fixture reading through a second handle while holding its own
-Windows file lock. Pichi `11095377` releases the test-owned lock before rereading;
-native retesting is pending. The negative denied-breakaway fixture still runs
-inside Cargo's restrictive Job.
+The macOS scope decision is settled: descendants stay in the workload's managed
+process group. Dillo owns shutdown of helpers it deliberately moves outside it.
+No further scope approval is needed.
 
-C04 now has a generic real-caller fixture for pipe and terminal workloads, with
-attached and initially detached startup, normal caller exit, caller scope loss,
-and actual terminal closure. All twelve cases pass locally on Linux. The native
-caller harness requires every case on each host, using a breakaway-permitting
-caller Job on Windows. Windows ConPTY cleanup still records incomplete evidence;
-this lifetime test does not waive C07's separate Job-empty requirement. Native
-macOS and Windows qualification of the new fixture is pending.
+Remaining Windows dependency gaps are exact opaque HANDLE inheritance and
+ConPTY Job-empty observation. [Draft API requests](reference/WINDOWS-API-REQUESTS.md)
+have not been posted. Windows build rejects unsupported inheritance explicitly;
+no owned unsafe shim or child-protocol rewriting has been added.
 
-The Linux ARM64 Dillo job reached `ares-3` but failed before VM tests because
-the workflow invoked absent `sudo` unconditionally. The workflow now uses
-preconfigured KVM access and hugepages when sufficient; privileged changes are
-attempted only when necessary. Its shell syntax and no-change path pass locally.
-Native ARM64 and macOS VM qualification remain incomplete.
-
-Console resize now has a direct Pichi–Dillo implementation. Pichi sends the
-interactive terminal's dimensions at startup, on change, and after reattachment;
-Dillo forwards the latest size through virtio-console control messages. Madrillo
-does not interpret this channel. Dillo `7030527` passes
-[native console unit tests on all three hosts](https://github.com/pichi-vm/dillo/actions/runs/42181830520)
-and [Linux VM CI](https://github.com/pichi-vm/dillo/actions/runs/42181837169), including
-actual guest terminal sizes and buffered-input monitor loss. The resize guest
-uses Fedora 44's fixed driver; older Linux kernels reverse standard cols/rows.
-
-Pichi `1e5b194e` passes [native caller qualification on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42181799204).
-The Unix terminal fixture covers resize, detach/reattach and initially detached
-launch; native endpoint tests also pass on Windows. This does not yet prove
-Windows terminal size observation through the full interactive CLI or the
-complete native Pichi/VM/build path. C26 remains pending. Pichi `e689b0c8` adds
-cleanup of a Unix resize socket left by abrupt child exit: only confirmed
-complete workload cleanup permits removal. Local caller, build/run/storage,
-native launch and monitor-crash cases pass; native qualification of this follow-up
-[passes on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42182463085). An additional strict Pichi Clippy run reports existing warnings in
-build, storage and configuration code; no strict-Clippy pass is claimed.
-
-The focused Dillo qualification now requires four real VM cases, adding guest
-resize to the three lifetime cases, and reserves memory for its 512 MiB guest.
-The manifest pins the resize implementations and maps those cases to C26 without
-promoting readiness or advancing the full-conformance streak.
-
-The macOS scope decision is settled: descendants must remain in the workload's
-managed process group. Dillo owns shutdown for any helper it deliberately moves
-outside it. PLAN.md and native tests cover ordinary descendants and demonstrate
-the escaped-session boundary. No additional macOS scope approval is needed.
-
-Native Linux/macOS/Windows qualification passes at `0708aec` in
-[run 42174112956](https://github.com/pichi-vm/madrillo/actions/runs/42174112956),
-including blocked input, malformed/incomplete clients, CLI identity, and retained
-leader status when cleanup stalls. Failed result writes/renames and directory
-synchronization withhold completion acknowledgements and exit callbacks. Full
-native passes have not started.
-
-Remaining Windows dependency requirements are exact opaque HANDLE inheritance
-and ConPTY Job-empty observation; [draft API requests](reference/WINDOWS-API-REQUESTS.md)
-have not been sent to maintainers. Pichi's caller qualification passes on all
-three native hosts at `39bcb773` in
-[run 42174800407](https://github.com/pichi-vm/madrillo/actions/runs/42174800407),
-including actual Windows console-window closure, caller Job loss, and subsequent
-binary input/reconnection. Guest resize and full
-Pichi/Dillo/build qualification remain unfinished. The focused Dillo VM workflow
-tests current monitor sources without requeueing Dillo's entire repository suite.
-
-Pichi `0f5c2cce` integrates current image requirements and retains writable
-storage through monitor ownership. [Native caller qualification passes on all
-three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42177485909), covering
-detach, duplicate-use rejection, independent exit-callback cleanup, preservation
-when completion is missing or incomplete, and real Windows caller-window closure.
-The PR is mergeable again; no PR has been merged.
-
-Pichi `5ee1d20d` passes [native caller qualification on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42178764461),
-including actual monitor-crash reconciliation: repeated wait, stop,
-attach and cleanup preserve unknown state, image pins, storage and partial build
-output. Madrillo also tests crashes before result publication and after publication
-but before a delayed exit callback. The latter retains the workload result without
-claiming that the callback ran. Native qualification and distribution pass on all
-three hosts in [run 42178753828](https://github.com/pichi-vm/madrillo/actions/runs/42178753828),
-including macOS diagnostic stress; [RPM qualification also passes](https://github.com/pichi-vm/madrillo/actions/runs/42178753993).
-C28 has reviewed executable mappings ready for
-full conformance; this qualification does not increment the streak.
-
-Dillo `6086bf1` passes Linux and Windows VM CI, including sustained unread guest
-input before monitor death and observed cooperative zero exit:
-[run 42176314901](https://github.com/pichi-vm/dillo/actions/runs/42176314901).
-The corresponding macOS and ARM64 VM jobs remain queued. Native console unit
-tests pass on Linux/macOS/Windows at the same revision. The C24 command mapping
-also requires the non-consuming full-pipe liveness probe. This remains partial
-qualification, not a complete conformance round.
+[Madrillo is public](https://github.com/pichi-vm/madrillo).
+[Pichi PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft;
+[Dillo PR #92](https://github.com/pichi-vm/dillo/pull/92) is open for review.
+Both are mergeable. Neither has been merged.
 
 ## Historical qualification notes
 

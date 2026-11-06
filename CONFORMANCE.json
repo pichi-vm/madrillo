@@ -56,7 +56,7 @@
       "id": "C04",
       "behavior": "Independent lifetime",
       "criterion": "In captured pipe/terminal modes, workload survives foreground/detached client exit, crash, and terminal disconnect; monitor independent of caller session/job; passthrough documents its external I/O owner",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "native-pichi-caller-unix",
         "native-pichi-caller-windows"
@@ -379,7 +379,7 @@
       "id": "C24",
       "behavior": "Monitor loss",
       "criterion": "Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "native-dillo-console-unix",
         "native-dillo-console-windows"

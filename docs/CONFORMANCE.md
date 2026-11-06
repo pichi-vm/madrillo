@@ -132,6 +132,33 @@ connections close before the helper starts and workload activation/notification
 environment variables are removed. The helper cannot substitute its result for
 the already-published workload result.
 
+C04 is ready to execute through the native caller harness on all three hosts.
+The generic fixture launches a real caller in a PTY/ConPTY and requires it to be
+alive before normal exit, process-group/Job loss, or terminal closure. Each case
+must leave the independently launched monitor and its pipe/terminal workload
+alive, accepting reattachment and producing a workload response to new input.
+Both initially detached and attached launches execute, for twelve combinations
+per host. Windows assigns the caller's kill-on-close, breakaway-permitting Job
+before allowing it to launch Madrillo. [Native execution at `b59e251`](https://github.com/pichi-vm/madrillo/actions/runs/42191893594)
+passes all cases, alongside Pichi's actual console-window and CLI lifecycle
+fixtures. README documents that passthrough retains its external I/O owner's
+lifetime. This requirement does not claim ConPTY Job-empty evidence (C07).
+
+C24 is ready to execute through the native Dillo console cases. They require a
+booted guest, confirmed ordinary input, cooperative zero exit after console EOF,
+and the same result after killing Madrillo while unread guest input remains
+backpressured. A separate native pipe test observes writer loss without consuming
+the queued bytes. Linux, macOS/HVF and Windows/WHP have executed these cases.
+The macOS evidence is Dillo `88d507c`'s [native CI job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493463),
+including its explicitly invoked monitor-crash test with Madrillo `30437e1`;
+the monitor's production Rust sources have not changed since that revision.
+Source review confirms the console-loss request reaches the existing VM stop
+path, which stops and joins the vCPU threads. Dillo currently launches no external
+helper processes; future helpers must participate in Dillo's shutdown contract.
+The monitor's Windows pipe Job does not kill Dillo on monitor-handle loss, so the
+fixture must observe Dillo's cooperative exit, not substitute forced termination.
+The mapped commands must execute again during each full conformance round.
+
 C11/C12 are ready to execute with native CRI, partial/binary pipe, merged
 terminal, extra-stream, disabled-log and passthrough cases. Linux additionally
 builds the pinned conmon source afresh and compares real file and journal
