@@ -30,8 +30,11 @@ Windows explicitly proves exact two-hop binary inheritance, excluded held
 resources, EOF, Job placement, denied breakaway, caller Job/window loss, and
 interactive run/attach/detach/resize/stop. All twelve generic pipe/terminal
 caller-loss cases now require and achieve complete cleanup. Pichi's updated
-host packaging patch also passes. The current pin `75774bb8` changes only
-CI Python setup after that run; production source is unchanged.
+host packaging patch also passes. The current pin `35d0b6be` changes only
+CI Python setup after that run; production source is unchanged. Its two CI
+commit bodies were corrected to pass Gitlint, preserving the complete source
+tree `5980339b5e2034e8ed0fcb7734d484757152cdde`. Full conformance pins the
+corrected immutable revision before counting any clean rounds.
 
 The first full-conformance dispatch at `57b24db` was canceled after the separate
 Mac VM job demonstrated that `actions/setup-python` tries to install under
