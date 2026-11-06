@@ -178,3 +178,8 @@ and [generic-access bits](https://learn.microsoft.com/en-us/windows/win32/secaut
 Native tests require public read access to work and reject write, delete-child,
 ownership-change and DACL-change grants, with and without an allowlist. Existing
 files must remain unchanged and rejected new files must not be created.
+The pinned-conmon differential also compares every active/backup log in eight
+file-control cases: truncation, one/three backups, oversized whole records,
+cumulative caps with and without rotation, existing-file append and an already
+exhausted cap. Timestamps are validated then normalized; payload bytes, stream
+identity, partial/full markers, record order and backup names must match.

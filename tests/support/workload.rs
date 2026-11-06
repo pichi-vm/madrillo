@@ -257,6 +257,13 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             io::stderr().write_all(b"diagnostic\n")?;
             Ok(37)
         }
+        Some("log-records") => {
+            // One atomic pipe write keeps record boundaries independent of
+            // scheduling; a single stream makes rotation order deterministic.
+            io::stdout()
+                .write_all(b"one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\nnine\nten\n")?;
+            Ok(37)
+        }
         Some("sleep") => {
             std::thread::sleep(Duration::from_secs(20));
             Ok(0)

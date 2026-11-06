@@ -197,7 +197,11 @@
       "status": "pending",
       "tests": [
         "current-tests",
-        "windows-log-directory-access"
+        "windows-log-directory-access",
+        "native-unix-log-paths",
+        "conmon-reference",
+        "conmon-logs",
+        "linux-journal"
       ],
       "evidence": [],
       "hosts": [
@@ -562,7 +566,15 @@
         "test detached_timeout_preserves_reason_and_console_lifetime ... ok",
         "test force_stops_grandchildren_and_concurrent_forks ... ok",
         "test a_full_diagnostic_sink_cannot_block_timeout_or_result_publication ... ok",
-        "test stalled_viewer_does_not_block_force_or_logging ... ok"
+        "test stalled_viewer_does_not_block_force_or_logging ... ok",
+        "test raw_logs_rotate_on_exact_byte_limits_and_keep_no_cri_prefix ... ok",
+        "test rotation_retains_whole_records_and_cumulative_cap_survives_reopen ... ok",
+        "test oversized_records_are_whole_and_truncation_replaces_inode ... ok",
+        "test an_existing_log_is_appended_to ... ok",
+        "test global_cap_counts_bytes_already_in_the_active_file ... ok",
+        "test failed_rotation_preserves_active_log_and_removes_prepared_file ... ok",
+        "test allowlist_checks_directory_boundaries_and_existing_files ... ok",
+        "test reopen_rotates_the_file_and_acknowledges_completion ... ok"
       ]
     },
     {
@@ -756,7 +768,8 @@
       ],
       "timeout": 180,
       "success_markers": [
-        "12 CRI/binary/native-exit comparisons passed against conmon 46837cd4800889521b6eccd4cce75a69249b1702"
+        "12 CRI/binary/native-exit comparisons passed against conmon 46837cd4800889521b6eccd4cce75a69249b1702",
+        "8 conmon file-control comparisons passed: truncation, backups, oversized records, cumulative caps and existing logs"
       ]
     },
     {
@@ -1002,6 +1015,27 @@
       "timeout": 120,
       "success_markers": [
         "test windows_log_directories_allow_public_read_but_reject_modification ... ok"
+      ]
+    },
+    {
+      "id": "native-unix-log-paths",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "file_logs"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test special_files_and_links_are_rejected_without_modifying_targets ... ok",
+        "test allowlist_rejects_parent_symlink_escape_and_world_writable_directory ... ok"
       ]
     }
   ],
