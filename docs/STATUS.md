@@ -19,9 +19,12 @@ or flush worker. Pichi `51518df6` has the same source tree as the qualified
 
 Pichi's host-packaging patch retains the now-runtime `dillo-config` dependency.
 Dillo `d39ab98` integrates main's explicit device-bus contract, with `88d507c`
-documenting resize completion. [Focused Linux x86 and Windows VM qualification
-passes](https://github.com/pichi-vm/madrillo/actions/runs/42184020365); ARM64 VM
-jobs remain queued.
+documenting resize completion. The superseded focused run passed Linux x86 and
+Windows, then failed ARM64 runner setup; its remaining queued job was cancelled.
+In [run 42189290251](https://github.com/pichi-vm/madrillo/actions/runs/42189290251),
+Windows passes, Linux x86 hits a guest boot deadline, and Linux ARM64/macOS remain
+queued. The same four VM cases, including full-buffer monitor loss and resize,
+pass locally on Linux/KVM. The hosted boot failure remains under investigation.
 
 Pichi `2907aa45` now resolves image transport preferences against the bundled
 PMI base DT and supplies explicit per-device buses. It preserves fallback when
@@ -37,12 +40,18 @@ retained ID and require complete cleanup. The real-process regression covers
 both foreground and already-detached clients. The official-image build and
 committed-submodule VM suite pass locally on Linux/KVM: guest-first build input,
 OCI output import, guest poweroff, and expected submodule rejection cases all
-execute. These do not complete the full native VM/build matrix.
+execute. The full staged-image create/extend/compose build-and-boot suite also
+passes locally (359.72 seconds), using pinned static guest tools that were
+removed after the run. These do not complete the full native VM/build matrix.
 
 Pichi now provides the Cargo runner used for native Windows test execution
 outside restrictive runner/Cargo Jobs. Madrillo's focused qualification reuses
-it, removing the duplicate Windows host script. Native retesting is pending.
-The negative denied-breakaway fixture still runs inside Cargo's restrictive Job.
+it, removing the duplicate Windows host script. Linux and macOS pass at
+`36d9e608` in [run 42189287103](https://github.com/pichi-vm/madrillo/actions/runs/42189287103).
+Windows failed before tests because Cargo's string runner preserves shell quotes
+literally. Pichi `186071de` and this harness now use Cargo's TOML argument array;
+native retesting is pending. The negative denied-breakaway fixture still runs
+inside Cargo's restrictive Job.
 
 The Linux ARM64 Dillo job reached `ares-3` but failed before VM tests because
 the workflow invoked absent `sudo` unconditionally. The workflow now uses

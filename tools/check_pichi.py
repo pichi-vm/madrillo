@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Qualify the native caller and reconciliation; real VM/build cases are separate."""
+import json
 import os
 from pathlib import Path
 import platform
-import shlex
 import subprocess
 import sys
 
@@ -52,8 +52,10 @@ def main():
     if os.name == "nt":
         script = pichi / ".github/scripts/windows-test-runner.ps1"
         assert script.is_file(), "native Windows test runner is missing"
-        environment["CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUNNER"] = shlex.join([
-            "pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)])
+        # Cargo splits a string runner on whitespace, without shell unquoting.
+        # Its TOML array keeps native paths (including spaces) as one argument.
+        runner = ["pwsh", "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(script)]
+        cargo += ["--config", f"target.{host}.runner={json.dumps(runner)}"]
     else:
         markers += [
             "test caller_group_loss_preserves_workload_and_reconnection ... ok",
