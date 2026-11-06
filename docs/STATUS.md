@@ -2,8 +2,9 @@
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
 **0 of 3 consecutive clean passes**. The [manifest](../CONFORMANCE.json) has
-28 requirements with reviewed executable coverage. C26 and C27 remain pending
-native Pichi/VM/build integration. Readiness is not a full conformance pass.
+30 requirements with reviewed executable coverage. The [final coverage review](reviews/05-conformance-readiness.md)
+permits full native execution, including the still-unverified current VM/build
+integration. Readiness is not a full conformance pass.
 
 The user approved the narrow Windows unsafe-code exception on November 6.
 The shared library and qualification targets still forbid unsafe code. The

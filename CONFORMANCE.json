@@ -429,7 +429,7 @@
       "id": "C26",
       "behavior": "Pichi integration",
       "criterion": "Shared run/build launch, run/attach/logs/wait/stop, IDs/discovery/prune protection, terminal restore/detach/resize semantics",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "native-pichi-caller-unix",
         "native-pichi-caller-windows",
@@ -449,7 +449,7 @@
       "id": "C27",
       "behavior": "Locked build channel",
       "criterion": "Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "native-pichi-vm-unix",
         "native-pichi-vm-windows"
