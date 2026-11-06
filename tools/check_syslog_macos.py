@@ -32,10 +32,16 @@ def delivered(pid, text, since):
                 "/usr/bin/syslog", "-F", "raw", "-k", "Sender", "madrillo",
                 "-k", "PID", str(pid), "-k", "Time", "ge", str(since),
             ], capture_output=True, timeout=10)
+            unified = subprocess.run([
+                "/usr/bin/log", "show", "--last", "1m", "--style", "ndjson",
+                "--info", "--debug", "--predicate", f"processID == {pid}",
+            ], capture_output=True, timeout=15)
             raise AssertionError(
                 f"missing macOS syslogd delivery: {lines!r}; "
                 f"ASL query status {query.returncode}: "
-                f"{query.stdout[-8192:]!r}; {query.stderr[-8192:]!r}"
+                f"{query.stdout[-8192:]!r}; {query.stderr[-8192:]!r}; "
+                f"unified log status {unified.returncode}: "
+                f"{unified.stdout[-8192:]!r}; {unified.stderr[-8192:]!r}"
             )
         time.sleep(0.1)
 
