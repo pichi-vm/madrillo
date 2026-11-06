@@ -51,6 +51,9 @@ jobs:
       - name: Native syslog diagnostics and workload separation
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_diagnostics.py target/debug/madrillo target/debug/madrillo-fixture
+      - name: Native macOS syslogd delivery and workload separation
+        if: runner.os == 'macOS'
+        run: sudo python3 tools/check_syslog_macos.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Monitor OOM protection and workload restoration
         if: runner.os == 'Linux'
         run: |
