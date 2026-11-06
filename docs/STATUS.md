@@ -692,3 +692,17 @@ RightKit 0.5.7 exposes exact raw-handle inheritance and suspended creation, but
 its contained spawn always adds a kill-on-close Job. It therefore cannot replace
 the pipe path's cooperative monitor-loss behavior as-is. No dependency code or
 unsafe shim was copied. Full conformance remains 0/3.
+
+macOS diagnostic qualification exposed a real delivery gap: the Unix socket
+writer returned success, but neither legacy logs nor unified logging contained
+the record in [run 42152439560](https://github.com/pichi-vm/madrillo/actions/runs/42152439560).
+The macOS backend now uses Apple's unified logging through the safe `oslog`
+0.2.0 API (MIT, executable-only, default logger feature disabled). Linux retains
+its qualified syslog backend; the bare library still depends only on serde.
+The native fixture requires the error message, severity, exact PID, executable,
+subsystem and category, and keeps workload stderr separate. All three hosts
+passed at `04adf21` in [run 42153084016](https://github.com/pichi-vm/madrillo/actions/runs/42153084016).
+That initial macOS fixture ran as root; the workflow now runs it as the ordinary
+runner user to qualify unprivileged delivery and observation too. That additional
+native check remains pending. System filtering/retention still apply; submitting
+a diagnostic is not a durable-storage acknowledgement. Full conformance is 0/3.
