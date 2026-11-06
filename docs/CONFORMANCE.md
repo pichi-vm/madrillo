@@ -149,14 +149,18 @@ forced cancellation uses the authenticated Terminate request; killing the
 detached monitor is monitor loss. The force/descendant fixture exercises that
 request without hiding the separately pending ConPTY Job-empty observation.
 
-C08 additionally requires a Linux fault fixture that delays the actual native
+C08 is ready to execute. It requires a Linux fault fixture that delays the actual native
 termination syscall while the workload continues recording wall-clock samples.
 The retained exit timestamp must follow the last live sample. It represents
 Madrillo's observation of terminal status, not the instant a stop was requested
 or an exact kernel exit timestamp. A previously observed exit time survives
 later cleanup errors; an unobserved exit has timestamp zero. Native core cases
-also check that known outcomes carry a timestamp by completion. C08 remains
-pending while the broader reaping/result review is incomplete.
+also check that known outcomes carry a timestamp by completion. Required native
+cases preserve full Windows exit bits, distinguish Unix signals from numeric
+exit codes and OOM, and reap adopted Linux orphans while the leader still runs.
+Source review keeps Unix leaders waitable until force delivery, validates
+adopted Linux children through pidfds before signaling, and uses owned process
+handles on Windows. These identity guarantees prevent stale numeric-PID kills.
 A second fault delays descendant-cleanup completion beyond the monitor's reap
 deadline. The leader's observed status and timestamp must survive while cleanup
 remains explicitly incomplete; cleanup timeout must not turn a known exit into

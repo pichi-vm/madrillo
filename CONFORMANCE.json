@@ -112,10 +112,13 @@
       "id": "C08",
       "behavior": "Reaping and result",
       "criterion": "Preserve leader native exit/signal/full Windows code and exit time; reap owned/adopted children; no fake success or stale-PID kill",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
-        "linux-exit-observation"
+        "linux-exit-observation",
+        "native-unix-signal-evidence",
+        "native-windows-exit-evidence",
+        "native-linux-reaping"
       ],
       "evidence": [],
       "hosts": [
@@ -1036,12 +1039,34 @@
         "test special_files_and_links_are_rejected_without_modifying_targets ... ok",
         "test allowlist_rejects_parent_symlink_escape_and_world_writable_directory ... ok"
       ]
+    },
+    {
+      "id": "native-linux-reaping",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "adopted_orphans_are_reaped_while_leader_is_running",
+        "--",
+        "--exact"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "test adopted_orphans_are_reaped_while_leader_is_running ... ok"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "1003639c59e825f893887b5add97f7698874ff26"
+      "revision": "0669b4fc0e3cdb508d91d06b719975b807f44da0"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
