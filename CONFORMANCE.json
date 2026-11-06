@@ -102,7 +102,7 @@
       "id": "C07",
       "behavior": "Workload descendants",
       "criterion": "Force stop, leader exit, and timeout clean the supported workload scope; fork races and grandchildren are tested on every host. Linux/Windows cover changed groups and daemonization. macOS covers descendants remaining in the managed workload process group; escape tests demonstrate the documented boundary",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
         "linux-cgroup-v2",
@@ -139,9 +139,11 @@
       "id": "C09",
       "behavior": "Terminal mode",
       "criterion": "Native PTY/ConPTY, controlling terminal/session, initial size, resize, interactive shell/job control, detach/reattach, drain/teardown",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "native-unix-terminal-interrupt",
+        "native-windows-terminal-interrupt"
       ],
       "evidence": [],
       "hosts": [
@@ -154,10 +156,11 @@
       "id": "C10",
       "behavior": "Extra resources",
       "criterion": "Safe adoption, exact inheritance, capture/pass/hold roles, no leaked writer copies, no argument rewriting or child-API proxy",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests",
-        "native-windows-inheritance"
+        "native-windows-inheritance",
+        "native-unix-inheritance"
       ],
       "evidence": [],
       "hosts": [
@@ -290,7 +293,7 @@
       "id": "C18",
       "behavior": "Runtime timeout",
       "criterion": "Monotonic deadline in monitor after native launch; works detached; kills workload scope and records timeout separately",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests"
       ],
@@ -1272,7 +1275,8 @@
         "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok",
         "native placement: terminal=false, early leader/helper membership and outside exit helper passed",
         "native placement: terminal=true, early leader/helper membership and outside exit helper passed",
-        "test native_placement_precedes_workload_and_helpers ... ok"
+        "test native_placement_precedes_workload_and_helpers ... ok",
+        "native Pichi exact inheritance: opaque bytes, excluded handle and EOF passed"
       ]
     },
     {
@@ -1387,12 +1391,34 @@
         "exact Windows inheritance: terminal=false, opaque bytes, excluded handle and EOF before hook passed",
         "exact Windows inheritance: terminal=true, opaque bytes, excluded handle and EOF before hook passed"
       ]
+    },
+    {
+      "id": "native-unix-inheritance",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "resources"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test exact_descriptors_compose_with_pipe_and_terminal_launch ... ok",
+        "test invalid_claim_cannot_become_valid_during_duplication ... ok",
+        "test held_reservation_is_released_before_exit_command ... ok"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "b41333b894c9bf44e1dbd643c56b14cc9858a4bc"
+      "revision": "997f36cc0eeed3df00d770a61c501b835c355ba9"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

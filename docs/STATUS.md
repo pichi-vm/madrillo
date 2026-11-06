@@ -2,137 +2,72 @@
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
 **0 of 3 consecutive clean passes**. The [manifest](../CONFORMANCE.json) has
-24 requirements with reviewed executable coverage. C07, C09, C10, C18,
-C26 and C27 remain pending. Readiness is not a full conformance pass.
+28 requirements with reviewed executable coverage. C26 and C27 remain pending
+native Pichi/VM/build integration. Readiness is not a full conformance pass.
 
-The user approved a narrow unsafe-code exception on November 6. The shared
-library and qualification targets still forbid unsafe code. The executable now
-denies unsafe code except for one private Windows OS-boundary module. It composes
-an explicit inherited-handle list, atomic Job membership and optional ConPTY in
-one native process creation. The same owned Job supplies termination and actual
-empty-scope observation. Opaque child arguments remain unchanged.
+The user approved the narrow Windows unsafe-code exception on November 6.
+The shared library and qualification targets still forbid unsafe code. The
+executable denies it except for one private, reviewed Windows OS-boundary
+module. Native process creation combines exact handle inheritance, atomic Job
+membership and optional ConPTY. The same owned Job supplies termination and
+observed scope emptiness. Child arguments and protocols remain opaque.
+See the [safety review](reviews/04-windows-boundary.md).
 
-Linux and Windows cross-target strict checks pass. New native Windows coverage
-passes a binary pipe through both process hops, excludes a monitor-held resource,
-and requires EOF before an exit hook finishes, in both pipe and ConPTY modes.
-Those native tests have not yet executed on this revision. The descendant tests
-now require complete cleanup in both Windows modes. Pending requirements remain
-pending until native execution and coverage review; the full streak stays zero.
+Madrillo `2a7993d` passes native tests, strict checks and distribution on Linux,
+macOS and Windows MSVC in [run 42216353055](https://github.com/pichi-vm/madrillo/actions/runs/42216353055).
+The Windows test passes a binary pipe through both process hops, excludes a
+held resource and requires EOF before the exit callback finishes in both pipe
+and ConPTY modes. Grandchild, concurrent-spawn, leader-exit and forced-stop
+fixtures now require complete Job cleanup in both modes and pass. Existing
+native shell, resize, reattachment, timeout, non-Unicode text and exit-code
+tests also pass. This closes the implementation gaps in C07/C09/C10/C18;
+the full conformance streak remains zero.
 
-The previous native qualification passes on all three hosts at `86a54c6` in
-[run 42198662913](https://github.com/pichi-vm/madrillo/actions/runs/42198662913).
-The Fedora RPM case also passes on Ubuntu/Docker in
-[run 42198663244](https://github.com/pichi-vm/madrillo/actions/runs/42198663244).
-These runs predate the Windows rewrite and do not validate it.
+Pichi `997f36cc` implements matching exact first-hop inheritance in a private
+Windows launcher. It requests independent console/Job lifetime without a
+fallback if breakaway is denied, passes actual stdio handles in the explicit
+list, and preserves Dillo's arguments. It pins Madrillo `2a7993d`. The native
+caller test now checks binary two-hop inheritance, excluded held resources and
+EOF. Linux caller execution and isolated Windows boundary compilation/strict
+lint pass. Full native integration is running; these are not VM evidence.
+Pichi's baseline test code emits existing Clippy warnings; the changed workload
+module has no Linux diagnostics, and the Windows boundary passes the same lint
+configuration with warnings denied in isolation.
 
-The generic C04 caller fixture covers pipe and terminal workloads, attached and
-initially detached startup, normal exit, caller process-group/Job loss, and actual
-terminal closure. All twelve cases execute successfully on all three hosts in
-[run 42191419161](https://github.com/pichi-vm/madrillo/actions/runs/42191419161).
-`b59e251` additionally requires the caller to be alive immediately before each
-loss; [native verification passes on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42191893594).
-C04 has reviewed executable coverage ready for full conformance. Its native
-caller evidence must be repeated against the Windows rewrite.
+Pichi's last complete Linux x86 and ARM64 VM/build evidence is at `b41333b8` in
+[run 42196385368](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
+Both hosts passed smoke boot, committed-submodule builds, and staged-image
+create/extend/compose. Its Windows cases reached the former exact-inheritance
+rejection; the macOS job failed before compilation because Python lacked
+`tomllib`. The current Pichi workflow and full-conformance workflow explicitly
+install Python 3.13. Native reruns must validate the new launcher and pin.
 
-Pichi `11095377` passes native caller qualification on all three hosts in both
-runs, including real Windows Job/window loss, interactive run/attach input,
-resize, detach, reattachment, initially detached startup and terminal restoration.
-The shared Windows Cargo runner uses an argument array to preserve native paths.
-The denied-breakaway case stays inside Cargo's restrictive Job. Timeout-cleanup
-tests stop independent workloads after client exit and require complete retained
-cleanup; the fixture releases its own Windows file lock before rereading data.
+Dillo `88d507c` remains the component pin. Ordinary input, console EOF,
+full-buffer monitor loss and guest resize passed on native Linux, Windows and
+macOS/HVF, including Linux ARM64, in the linked evidence below. Dillo
+[PR #92](https://github.com/pichi-vm/dillo/pull/92) is green and ready for review.
+Console-loss shutdown is the default. Guest command/build/resize APIs remain
+direct Pichi–Dillo contracts.
 
-C24 now has real VM evidence on Linux, macOS and Windows. Dillo `88d507c` passes
-ordinary input, console EOF, full-buffer monitor loss and guest resize on hosted
-Linux x86 and Windows in [run 42190578920](https://github.com/pichi-vm/madrillo/actions/runs/42190578920).
-The same cases, including explicit monitor-crash execution with Madrillo
-`30437e1`, pass on macOS/HVF in [Dillo's native CI job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493463).
-The non-consuming full-pipe liveness unit test also passes there. An earlier
-hosted Linux boot timeout has not reproduced or been explained. Dillo's
-[Linux ARM64 job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493148)
-now passes the real console, resize and explicitly invoked monitor-crash cases.
-All current checks on Dillo PR #92 are green; it is ready for review.
-
-Linux/KVM also passes the official-image build, committed-submodule cases, and
-full staged-image create/extend/compose build-and-boot suite (359.72 seconds).
-These ran at Pichi `36d9e608`; subsequent Pichi changes only fix test execution.
-Pinned static guest tools and other task-owned temporary files were removed.
-Full native Pichi/VM/build qualification remains incomplete. Pichi resolves
-PMI-declared bus capacity before launching Dillo, preserves guest-first build
-traffic, and keeps resize a direct Pichi–Dillo channel.
-
-C26/C27 now map `tools/check_pichi_vm.py` to the three existing real VM/build
-suites on every native host. Each exact test must pass without ignored tests;
-the pinned Arma/Corium installation is temporary. The current Pichi
-`11095377` platform run is [42193468104](https://github.com/pichi-vm/pichi/actions/runs/42193468104).
-Its Linux x86 VM/build job passes. The new local harness also passes all three
-suites at that revision; staged-image testing completes in 307.04 seconds.
-Windows opaque handle inheritance remains unsupported, so these requirements
-remain pending despite the new executable mappings.
-
-The Windows smoke and submodule VM suites at `11095377` fail at that explicit
-handle-inheritance check. Its retained staged-image artifact instead exposes a
-fixture permission error beneath the shared runner evidence directory. Pichi
-`b41333b8` protects the newly created empty fixture before populating it; this
-is the current component pin. Its [Windows native job](https://github.com/pichi-vm/pichi/actions/runs/42196385368/job/127820597539)
-confirms that fix: the retained staged-image build log now reaches the same
-explicit handle-inheritance rejection as the smoke and submodule suites.
-The [Linux x86 VM/build job](https://github.com/pichi-vm/pichi/actions/runs/42196385368/job/127820597506)
-passes at this pin. The [Linux ARM64 VM/build job](https://github.com/pichi-vm/pichi/actions/runs/42196385368/job/127820597581)
-also passes all three suites. The macOS job failed before monitor compilation
-because its Python lacked `tomllib`; workflow setup needs an explicit Python.
-Cancellation was requested for the superseded `544ddff6` and `11095377` manual
-platform runs after confirming this replacement, to free their ARM work.
-
-C19 now has reviewed first-code placement coverage for pipe/terminal workloads
-and an immediate helper, with an outside exit helper. Linux passes all sixteen launches
-and the cgroup v2 probe now verifies that the monitor stays outside workload
-limits. The Windows test requires a successful outside breakaway control before
-requiring denied breakaway inside the workload and its helper. It runs through
-the existing native caller harness outside Cargo's restrictive Job. The
-[native caller workflow](https://github.com/pichi-vm/madrillo/actions/runs/42194873504)
-passes all three hosts, including the explicit Windows placement fixture.
-Linux/macOS placement and both Linux cgroup versions pass in the native build
-workflow above. C19 is ready; ConPTY Job-empty observation remains a C07 gap.
-
-C07's executable mappings now require the descendant fixtures, both Linux
-cgroup versions, and the explicit macOS escape boundary. Windows fixtures
-add detached console groups and null stdio for helpers/grandchildren and
-concurrent spawning; pipe-mode tests require complete Job cleanup evidence.
-Linux descendant/force cases and strict Linux/Windows checks pass locally.
-Native Linux, macOS and Windows execution passes in the current qualification
-run above. C07 remains pending because ConPTY cannot yet prove Job emptiness;
-the full streak remains zero.
-
-The full-conformance workflow now orchestrates three fresh rounds per native
-host, retains reports/logs/distributions/reference artifacts, and aggregates
-each round before requiring a streak of three. Its preparation step rejects
-pending coverage before scheduling native runners. Per-round conmon source
-trees are retained separately so the next round cannot reuse an old build.
-This is orchestration, not evidence that any full round has passed.
-The required RPM case now runs Fedora's packaging tools in a disposable native
-container, fixing the missing-toolchain mismatch with the Ubuntu Linux runner.
-The focused RPM workflow uses the same command. Local rootless Podman execution
-passes source packaging, the offline binary build, packaged-monitor execution,
-and license payload checks; its temporary container is removed. Ubuntu/Docker
-CI verification passes in the focused RPM run linked above.
-The [first dispatch](https://github.com/pichi-vm/madrillo/actions/runs/42195548702)
-at `e00e529` stopped at the expected pending-coverage checks and scheduled no
-native workloads. It is a verified rejection, not a full conformance pass.
-
-The macOS scope decision is settled: descendants stay in the workload's managed
+The macOS contract is settled: descendants remain in the managed workload
 process group. Dillo owns shutdown of helpers it deliberately moves outside it.
-No further scope approval is needed.
+Native escape tests demonstrate that boundary. No further scope approval is
+needed. Windows and Linux retain their stronger native scope contracts.
 
-The approved private Windows boundary replaces the dependency gaps for exact
-HANDLE inheritance and ConPTY Job-empty observation. [Draft API requests](reference/WINDOWS-API-REQUESTS.md)
-remain unposted historical research. Pichi's first-hop Windows launcher still
-needs the matching explicit-handle implementation and native verification.
+Full conformance requires three fresh complete rounds on unchanged sources,
+including native Pichi caller/VM/build, Dillo, service/storage/oom fixtures,
+conmon differential behavior and distribution. The workflow rejects pending
+coverage before using runners. Its earlier rejection at `e00e529` was expected
+and does not count as a pass. Native Fedora RPM qualification now executes in
+a disposable container on Ubuntu; [run 42198663244](https://github.com/pichi-vm/madrillo/actions/runs/42198663244)
+passed packaging, offline build, execution and license payload checks.
 
 [Madrillo is public](https://github.com/pichi-vm/madrillo).
-[Pichi PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft;
-[Dillo PR #92](https://github.com/pichi-vm/dillo/pull/92) is open for review.
-Both are mergeable. Neither has been merged.
+[Pichi PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft pending
+native integration and complete conformance. Neither integration PR is merged.
+Task-owned temporary compilation checkouts were removed; ordinary Cargo caches
+remain. [Upstream API drafts](reference/WINDOWS-API-REQUESTS.md) were never sent
+and are historical research following the approved private boundary.
 
 ## Historical qualification notes
 

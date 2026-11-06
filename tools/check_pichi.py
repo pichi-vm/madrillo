@@ -78,9 +78,11 @@ def main():
          "--test", "cmd_run", "--test", "cmd_rmi"], pichi, environment, markers)
     for name in native:
         test = "cmd::workload::tests::" + name
+        evidence = [crash] if name.startswith("monitor_crash") else []
+        if os.name == "nt" and name == "native_monitor_launch_and_async_control":
+            evidence.append("native Pichi exact inheritance: opaque bytes, excluded handle and EOF passed")
         run([*cargo, "--lib", test, "--", "--exact", "--ignored", "--nocapture"],
-            pichi, environment, [test, "1 passed; 0 failed; 0 ignored;"] +
-            ([crash] if name.startswith("monitor_crash") else []))
+            pichi, environment, [test, "1 passed; 0 failed; 0 ignored;", *evidence])
     if os.name == "nt":
         test = "native_placement_precedes_workload_and_helpers"
         run(["cargo", "+1.94.0", "test", "--locked", "--all-features", "--test", "core",
