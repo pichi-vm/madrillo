@@ -549,3 +549,23 @@ research deliverables are tracked under `docs/reference/`; active implementation
 worktrees and user-owned files are preserved. The final local verification ran
 inside an automatically removed temporary directory. CI now removes its monitor
 checkout after qualification, including failure and cancellation paths.
+
+Pichi's current draft revision `bf99238b` fixes the packaged host-manifest patch
+and passes its commit-message, formatting, license, spec and SRPM checks. Local
+packaging verification also applied the patch, trimmed the lock without new
+pins, resolved the locked host graph and vendored it successfully; its scratch
+copy was removed. Native caller qualification
+[42144307625](https://github.com/pichi-vm/madrillo/actions/runs/42144307625)
+passes Linux and macOS on this revision. Windows is still running at this
+checkpoint, including a comparison of the identical launch from Bash and
+PowerShell. No launch flags have been relaxed.
+
+Linux notification qualification now rejects an oversized datagram without
+forwarding its valid-looking READY prefix, and exercises a genuinely full
+destination receive queue. The harness proves EAGAIN on a fresh sender (an
+existing sender can exhaust its own buffer first). Both monotonic timeout and
+an explicit control-channel force request remain responsive under that pressure;
+the retained and delivered result records agree, failed final delivery is
+reported, and the relay socket is removed. These cases, the real systemd
+NotifyAccess=main service check and strict Clippy pass locally. Native CI for the
+new fixture remains required; full conformance remains zero.

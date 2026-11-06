@@ -316,10 +316,18 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(37)
         }
         #[cfg(target_os = "linux")]
-        Some("notify") => {
+        Some(mode @ ("notify" | "notify-oversized")) => {
             let socket = std::os::unix::net::UnixDatagram::unbound()?;
             socket.connect(std::env::var_os("NOTIFY_SOCKET").ok_or("NOTIFY_SOCKET missing")?)?;
-            socket.send(b"MAINPID=1\nFDSTORE=1\rREADY=1\nSTATUS=madrillo relay fixture\nWATCHDOG=1\nERRNO=0")?;
+            if mode == "notify-oversized" {
+                let mut packet = b"READY=1\nSTATUS=".to_vec();
+                packet.resize(16385, b'x');
+                socket.send(&packet)?;
+            } else {
+                socket.send(b"MAINPID=1\nFDSTORE=1\rREADY=1\nSTATUS=madrillo relay fixture\nWATCHDOG=1\nERRNO=0")?;
+            }
+            std::io::stdout().write_all(b"notification sent\n")?;
+            std::io::stdout().flush()?;
             std::thread::sleep(Duration::from_secs(15));
             Ok(0)
         }
