@@ -1,11 +1,15 @@
 # Implementation status
 
-Implementation complete. All C01–C30 requirements passed **three consecutive
+Follow-up qualification in progress. All C01–C30 requirements passed **three consecutive
 clean full conformance rounds** in [run 42232080329](https://github.com/pichi-vm/madrillo/actions/runs/42232080329).
 The tested sources are Madrillo `defe4b7468d0e1f7c7c22c793f254d52ae73a2a4`
-and Pichi `b8ddfbd3b45be53a0a067b72119866ade1cbe8bc`. The completion record is
-a documentation-only follow-up; runtime code, tests, tools, dependency pins and
-workflow definitions remain the qualified implementation.
+and Pichi `b8ddfbd3b45be53a0a067b72119866ade1cbe8bc`. Pichi now includes a
+startup diagnostic fix at `96d4f7a83cde1c7326b4bc5bdc7a99147051adac`: a launch
+failure includes the retained, bounded monitor error after observing its owned
+process for at most one second. A regression fails monitor preparation before
+any workload executes. Linux caller checks pass. Fresh full native rounds must
+qualify this follow-up; the previous passes are not attributed to changed sources.
+Madrillo's production implementation remains unchanged.
 
 The [final audit](reviews/07-completion.md) verifies all nine native reports,
 186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.

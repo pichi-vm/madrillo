@@ -1361,7 +1361,7 @@
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "b8ddfbd3b45be53a0a067b72119866ade1cbe8bc"
+      "revision": "96d4f7a83cde1c7326b4bc5bdc7a99147051adac"
     }
   }
 }

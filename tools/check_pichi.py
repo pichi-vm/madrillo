@@ -46,6 +46,7 @@ def main():
         "test cmd::device_buses::tests::truncated_or_missing_metadata_is_rejected ... ok",
     ]
     native = ["native_monitor_launch_and_async_control",
+              "startup_failure_reports_monitor_diagnostic",
               "monitor_crash_preserves_unknown_state_and_cleanup_inputs"]
     crash = "native monitor crash: unknown state and cleanup inputs retained"
     cargo = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "pichi"]
@@ -84,6 +85,8 @@ def main():
     for name in native:
         test = "cmd::workload::tests::" + name
         evidence = [crash] if name.startswith("monitor_crash") else []
+        if name == "startup_failure_reports_monitor_diagnostic":
+            evidence.append("native startup failure: retained monitor diagnostic reported without executing a workload")
         if os.name == "nt" and name == "native_monitor_launch_and_async_control":
             evidence.append("native Pichi exact inheritance: opaque bytes, excluded handle and EOF passed")
         run([*cargo, "--lib", test, "--", "--exact", "--ignored", "--nocapture"],

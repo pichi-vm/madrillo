@@ -1,5 +1,9 @@
 # Final implementation and conformance review
 
+This record covers the source revisions below. A later Pichi startup-diagnostic
+fix is being qualified as described in [current status](../STATUS.md); these
+passes are not attributed to that follow-up.
+
 All C01–C30 requirements passed three consecutive complete native rounds in
 [run 42232080329](https://github.com/pichi-vm/madrillo/actions/runs/42232080329).
 The verified Madrillo revision is `defe4b7468d0e1f7c7c22c793f254d52ae73a2a4`,
