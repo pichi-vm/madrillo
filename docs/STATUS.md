@@ -11,7 +11,9 @@ launcher: the foreground program ignored terminal interrupts. The native
 boundary now clears that inherited setting before ConPTY creation, following
 Windows Terminal's precedent. The shell regression explicitly starts the
 monitor in a new process group and also runs under a redirected launcher.
-Native verification of this correction is pending; no full round is counted.
+At `0e860df`, native Windows qualification passes both shell regressions and
+the existing exact-handle/Job/ConPTY suite in [run 42222118308](https://github.com/pichi-vm/madrillo/actions/runs/42222118308).
+Pichi now pins that monitor at `993d7943`; no full round is counted.
 
 The user approved the narrow Windows unsafe-code exception on November 6.
 The shared library and qualification targets still forbid unsafe code. The
@@ -37,18 +39,24 @@ Windows explicitly proves exact two-hop binary inheritance, excluded held
 resources, EOF, Job placement, denied breakaway, caller Job/window loss, and
 interactive run/attach/detach/resize/stop. All twelve generic pipe/terminal
 caller-loss cases now require and achieve complete cleanup. Pichi's updated
-host packaging patch also passes. The current pin `35d0b6be` changes only
-CI Python setup after that run; production source is unchanged. Its two CI
+host packaging patch also passes. The prior pin `35d0b6be` changed only
+CI Python setup after that run; production source was unchanged. Its two CI
 commit bodies were corrected to pass Gitlint, preserving the complete source
 tree `5980339b5e2034e8ed0fcb7734d484757152cdde`. Full conformance pins the
-corrected immutable revision before counting any clean rounds.
+corrected immutable revision before counting any clean rounds. The current
+`993d7943` additionally pins Madrillo's terminal interrupt correction above.
 
 The first full-conformance dispatch at `57b24db` was canceled after the separate
 Mac VM job demonstrated that `actions/setup-python` tries to install under
 unwritable `/Users`. Full conformance and Pichi's native Mac job now use a
 relocatable Python environment in the runner temporary directory, cleaned at
-job completion. This requires no runner permission change. VM/build integration
-and the full three-round ledger remain unverified.
+job completion. This requires no runner permission change. The native Mac
+installed this environment successfully in [run 42218771140](https://github.com/pichi-vm/pichi/actions/runs/42218771140).
+Its VM/build integration and the full three-round ledger remain unverified.
+
+Linux x86 and Windows passed all three real VM/build suites at Pichi `cc46a598`
+in [run 42217805620](https://github.com/pichi-vm/pichi/actions/runs/42217805620):
+smoke boot, committed-submodule builds, and staged-image create/extend/compose.
 
 Pichi's last complete Linux x86 and ARM64 VM/build evidence is at `b41333b8` in
 [run 42196385368](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
