@@ -610,3 +610,15 @@ full stderr socket during timeout. Real Linux syslog delivery passes with PID,
 facility, priority and workload separation verified through journal records.
 The new syslog check is wired into Linux CI; native results for this revision
 remain pending. Full C01-C30 conformance remains zero.
+
+The first WMI-hosted caller test also failed with native Access Denied. Its
+host was outside the invoking runner Job, but the harness still ran tests
+under Cargo. The pinned Cargo predates
+[rust-lang/cargo#17527](https://github.com/rust-lang/cargo/pull/17527), which
+adds permission for explicit child breakaway from Cargo's own Job. Microsoft's
+[Win32_Process.Create documentation](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/create-method-in-class-win32-process)
+also requires an explicit startup flag to avoid WMI provider Job limits.
+The harness now builds the same five test executables with Cargo, runs them
+directly from the WMI host, and requests breakaway when creating that host.
+These are test-context corrections; no production flags or lifetime guarantees
+were relaxed. Native confirmation remains required.
