@@ -331,9 +331,10 @@
       "id": "C22",
       "behavior": "Held resources and cleanup",
       "criterion": "Monitor-only reservations retained then released before final notification; endpoints cleaned; retained state remains readable",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "linux-notifications"
       ],
       "evidence": [],
       "hosts": [
@@ -445,8 +446,11 @@
       "id": "C30",
       "behavior": "Monitor termination events",
       "criterion": "Conmon-equivalent Unix signal forwarding without losing reaping/log finalization; native Windows cancellation semantics documented/tested; raw terminal bytes remain separate",
-      "status": "pending",
+      "status": "ready",
       "tests": [
+        "native-unix-termination",
+        "native-unix-terminal-interrupt",
+        "native-windows-terminal-interrupt",
         "current-tests"
       ],
       "evidence": [],
@@ -550,7 +554,8 @@
         "test observer_limit_preserves_existing_control ... ok",
         "test administrative_eof_does_not_require_taking_the_active_writer ... ok",
         "test close_input_drains_preceding_accepted_bytes ... ok",
-        "test detached_timeout_preserves_reason_and_console_lifetime ... ok"
+        "test detached_timeout_preserves_reason_and_console_lifetime ... ok",
+        "test force_stops_grandchildren_and_concurrent_forks ... ok"
       ]
     },
     {
@@ -862,6 +867,73 @@
       "timeout": 1800,
       "success_markers": [
         "Native RPM qualification passed: locked source, offline build, executable launch and license payload"
+      ]
+    },
+    {
+      "id": "native-unix-termination",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "control",
+        "monitor_"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test monitor_sigterm_is_forwarded_and_result_is_finalized ... ok",
+        "test monitor_termination_signals_preserve_workload_handlers_and_logs ... ok"
+      ]
+    },
+    {
+      "id": "native-unix-terminal-interrupt",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "control",
+        "interactive_shell_job_control_survives_detach",
+        "--",
+        "--exact"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test interactive_shell_job_control_survives_detach ... ok"
+      ]
+    },
+    {
+      "id": "native-windows-terminal-interrupt",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "control",
+        "native_command_shell_interrupt_survives_detach",
+        "--",
+        "--exact"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test native_command_shell_interrupt_survives_detach ... ok"
       ]
     }
   ],

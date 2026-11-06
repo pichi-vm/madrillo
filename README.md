@@ -60,9 +60,9 @@ shared parent instead of exposing retained data during an ACL update.
 The caller must give the monitor an independent native lifetime. On Windows,
 Pichi requests `CREATE_BREAKAWAY_FROM_JOB`; a containing Job must permit that
 operation. A launch that is denied does not fall back to keeping the monitor
-inside the caller's Job. The current hosted Windows runner denies breakaway
-under both Bash and PowerShell; caller qualification also exercises a separate
-test host outside that Job. This remains an open qualification requirement.
+inside the caller's Job. Native caller qualification exercises both denied
+breakaway and permitted caller Job loss, using a separate test host outside
+the runner's Job. Console-loss coverage remains tracked separately by C04.
 
 Unix listeners check each connecting process's effective UID against the
 monitor's user before accepting requests or delivering output. This also
@@ -74,6 +74,15 @@ like `Terminate`. It closes pipe input after already accepted bytes drain,
 even when an attachment still owns input. Only the owner may send input bytes;
 detach and ordinary client EOF still release ownership without closing the
 workload's input. Terminal input cannot be half-closed.
+
+On Unix, `SIGINT`, `SIGTERM`, `SIGHUP` and `SIGQUIT` received by Madrillo are
+forwarded to the workload process group. Madrillo continues reaping and log/result
+finalization; a workload's signal handler may complete normally. On Windows,
+the detached monitor uses the authenticated `Terminate` request for forced
+workload cancellation. Killing the monitor itself is monitor loss and cannot
+publish completion. Console control bytes are separate: a Ctrl-C byte sent to
+a host PTY/ConPTY is interpreted by its terminal and foreground program. Dillo
+uses pipes and handles console loss through its own shutdown contract.
 
 Monitor diagnostics go to stderr. `--log-level` defaults to `warn`, with
 `error`, `info`, `debug`, and `trace` also supported. Names are case-insensitive;

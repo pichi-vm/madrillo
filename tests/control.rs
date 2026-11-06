@@ -315,6 +315,38 @@ fn monitor_sigterm_is_forwarded_and_result_is_finalized() -> Result<(), Box<dyn 
     monitor.wait()
 }
 
+#[cfg(unix)]
+#[test]
+fn monitor_termination_signals_preserve_workload_handlers_and_logs()
+-> Result<(), Box<dyn std::error::Error>> {
+    use nix::sys::signal::{Signal, kill};
+    for signal in [
+        Signal::SIGINT,
+        Signal::SIGTERM,
+        Signal::SIGHUP,
+        Signal::SIGQUIT,
+    ] {
+        let (mut monitor, mut client) = Monitor::initial("report-signal", false)?;
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+        client.output_until(b"ready")?;
+        kill(
+            nix::unistd::Pid::from_raw(i32::try_from(monitor.child.id())?),
+            signal,
+        )?;
+        let expected = format!("signal={}", signal as i32);
+        client.output_until(expected.as_bytes())?;
+        assert!(matches!(client.next()?, ServerMessage::Completed { result }
+            if result.leader == (madrillo::LeaderResult::Exit { code: 37 })
+                && result.cause == CompletionCause::LeaderExit
+                && result.log_errors.is_empty() && result.monitor_errors.is_empty()));
+        monitor.wait()?;
+        let log = std::fs::read_to_string(monitor._root.path().join("state/console.log"))?;
+        assert!(log.contains(&expected), "{log}");
+    }
+    Ok(())
+}
+
 #[test]
 fn initial_connection_retains_first_output_without_waiting_for_a_handshake()
 -> Result<(), Box<dyn std::error::Error>> {
@@ -335,6 +367,12 @@ fn initial_connection_retains_first_output_without_waiting_for_a_handshake()
             }
             ServerMessage::Completed { result } => {
                 assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 37 });
+                let retained: madrillo::Completion = serde_json::from_slice(&std::fs::read(
+                    monitor._root.path().join("state/result.json"),
+                )?)?;
+                assert_eq!(retained, result);
+                #[cfg(unix)]
+                assert!(!monitor.endpoint.exists());
                 break;
             }
             response => return Err(format!("unexpected {response:?}").into()),

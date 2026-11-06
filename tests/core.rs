@@ -124,14 +124,14 @@ fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::er
 #[test]
 fn terminal_logs_merge_stdout_and_stderr() -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
-    let result = run(root.path(), "emit", &["--terminal"], &[])?;
+    let result = run(root.path(), "terminal-emit", &["--terminal"], &[])?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
     assert!(result.log_errors.is_empty(), "{result:?}");
     assert!(!result.output_truncated);
     let log = root.path().join("state/console.log");
     assert!(payload(&log, b"stderr")?.is_empty());
     let merged = payload(&log, b"stdout")?;
-    for expected in [b"first".as_slice(), b"diagnostic"] {
+    for expected in [b"first".as_slice(), "partial —".as_bytes(), b"diagnostic"] {
         assert!(merged.windows(expected.len()).any(|part| part == expected));
     }
     Ok(())

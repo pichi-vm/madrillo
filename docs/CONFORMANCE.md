@@ -101,6 +101,10 @@ The large-journal case must execute its normally ignored native memfd fixture.
 macOS and Windows explicitly reject requested journald integration before the
 workload runs. Log size/rotation and storage-failure coverage remain separate
 under C13-C15; these entries do not claim those requirements are complete.
+The terminal fixture writes Unicode text because
+[Rust's Windows console writer](https://doc.rust-lang.org/std/io/struct.Stdout.html#note-windows-portability-considerations)
+rejects invalid UTF-8. The pipe fixture continues to require arbitrary binary
+bytes, including NUL and `0xff`, without conversion.
 
 C16/C17 are ready to execute against Linux's actual systemd notification and
 socket-activation facilities. The fixtures check notification filtering, service
@@ -126,3 +130,17 @@ accepted bytes before EOF. The observer-capacity fixture fills the endpoint
 until an excess client is rejected, then uses an existing connection to start
 and terminate the workload. A rejected attachment cannot stand in for a dead
 or unresponsive monitor.
+
+C22 is ready to execute with real held-file reservations, capture cancellation,
+and retained completion. The initial-channel fixture reads and compares
+`result.json` as soon as Completed arrives, and checks Unix endpoint removal.
+The Linux notification fixture also requires relay socket removal. Source review
+places held-resource release and listener closure before publication and final
+notification on every host; live connections remain only for bounded delivery.
+
+C30 is ready to execute with real Unix SIGINT/SIGTERM/SIGHUP/SIGQUIT delivery,
+workload handlers, retained logs and native signal exit status. Separate native
+shell fixtures exercise Ctrl-C through PTY/ConPTY after detach/reattach. Windows
+forced cancellation uses the authenticated Terminate request; killing the
+detached monitor is monitor loss. The force/descendant fixture exercises that
+request without hiding the separately pending ConPTY Job-empty observation.

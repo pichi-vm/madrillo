@@ -221,8 +221,29 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 }
             }
         }
-        Some("emit") => {
-            io::stdout().write_all(b"first\n\npartial\0\xff")?;
+        #[cfg(unix)]
+        Some("report-signal") => {
+            let mut signals = signal_hook::iterator::Signals::new([
+                signal_hook::consts::SIGINT,
+                signal_hook::consts::SIGTERM,
+                signal_hook::consts::SIGHUP,
+                signal_hook::consts::SIGQUIT,
+            ])?;
+            writeln!(io::stdout(), "ready")?;
+            io::stdout().flush()?;
+            let signal = signals.forever().next().ok_or("signal stream closed")?;
+            writeln!(io::stdout(), "signal={signal}")?;
+            Ok(37)
+        }
+        Some(mode @ ("emit" | "terminal-emit")) => {
+            // Rust's native Windows console writer requires valid UTF-8.
+            // Arbitrary binary output remains covered by the pipe fixture.
+            let bytes = if mode == "emit" {
+                b"first\n\npartial\0\xff".as_slice()
+            } else {
+                "first\n\npartial —".as_bytes()
+            };
+            io::stdout().write_all(bytes)?;
             io::stdout().flush()?;
             io::stderr().write_all(b"diagnostic\n")?;
             Ok(37)
