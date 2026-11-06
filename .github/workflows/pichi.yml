@@ -46,8 +46,10 @@ jobs:
         run: |
           rustup toolchain install 1.94.0 --profile minimal
           rustup toolchain install nightly-2026-07-06 --profile minimal --component rustfmt --component clippy
+          rustup default nightly-2026-07-06
       - uses: Swatinem/rust-cache@v2
         with:
+          cache-on-failure: true
           workspaces: |
             monitor -> target
             pichi -> target
@@ -113,5 +115,10 @@ jobs:
         shell: pwsh
         working-directory: pichi
         run: cargo +nightly-2026-07-06 test --locked -p pichi --lib native_monitor_launch_and_async_control -- --ignored --nocapture
+      - name: Qualify Windows caller outside the runner Job
+        if: runner.os == 'Windows' && !cancelled()
+        shell: pwsh
+        working-directory: monitor
+        run: ./tools/check_windows_caller.ps1
       - name: Scope of this evidence
         run: echo 'Caller qualification only. This is not a complete VM/platform or C01-C30 conformance pass.'

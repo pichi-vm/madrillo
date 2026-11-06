@@ -569,3 +569,19 @@ the retained and delivered result records agree, failed final delivery is
 reported, and the relay socket is removed. These cases, the real systemd
 NotifyAccess=main service check and strict Clippy pass locally. Native CI for the
 new fixture remains required; full conformance remains zero.
+
+The Windows diagnostic run has now completed. An independent Python process
+probe succeeds with detached/new-process-group flags and fails with Access
+Denied when only CREATE_BREAKAWAY_FROM_JOB is added, under both Bash and
+PowerShell. The native Pichi launch fails the same way; six run CLI tests now
+exercise that path and also fail. Windows unit/build/rmi selections pass, but
+these do not qualify launch. The source and full job log are in
+[job 127651971773](https://github.com/pichi-vm/madrillo/actions/runs/42144307625/job/127651971773).
+
+The caller workflow now also starts a bounded test host through Windows WMI,
+which does not inherit the invoking runner's Job Object, and runs the unchanged
+caller code there. This is qualification infrastructure only: production still
+uses the preconnected inherited channel and requires native Job breakaway.
+There is no fallback that leaves monitor lifetime under the caller's Job, and
+no production WMI broker. Results from this new test context are pending; a
+successful run will not by itself prove every C04 lifetime scenario.
