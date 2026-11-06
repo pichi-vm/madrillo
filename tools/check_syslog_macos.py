@@ -90,8 +90,10 @@ def delivered(pid, text):
 
 with tempfile.TemporaryDirectory(prefix="madrillo-syslog-") as tmp:
     root = Path(tmp)
-    for level in ["error", "trace"]:
-        state = root / level
+    # Exercise the intermittent fresh-launch failure too. Each attempt must
+    # pass independently; this is not a retry that hides a failed launch.
+    for attempt, level in enumerate(["error", "trace"] * 8):
+        state = root / f"{attempt}-{level}"
         # A failed exit hook produces an error-level monitor diagnostic after
         # successful capture. The workload's own exit and stderr stay separate.
         command = [
