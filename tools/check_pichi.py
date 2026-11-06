@@ -16,7 +16,7 @@ def run(command, pichi, environment, markers, timeout=1500):
     print(result.stderr, end="", flush=True)
     result.check_returncode()
     for marker in markers:
-        assert marker in result.stdout, f"missing native execution evidence: {marker}"
+        assert marker in result.stdout or marker in result.stderr, f"missing native execution evidence: {marker}"
 
 
 def main():

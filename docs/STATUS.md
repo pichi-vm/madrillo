@@ -9,7 +9,12 @@ failure includes the retained, bounded monitor error after observing its owned
 process for at most one second. A regression fails monitor preparation before
 any workload executes. Linux caller checks pass. Fresh full native rounds must
 qualify this follow-up; the previous passes are not attributed to changed sources.
-Madrillo's production implementation remains unchanged.
+Pichi now also respects the caller's native temporary directory for Unix
+sockets at `74223b25030b729e146154f5654b067175ca21b0`. Compact absolute addresses
+are retained for later clients with different environments. The detached CLI
+regression failed against the old hard-coded `/tmp` path and passes with this
+change; full local caller qualification and formatting pass. Madrillo's
+production implementation remains unchanged.
 
 The follow-up run [42242142705](https://github.com/pichi-vm/madrillo/actions/runs/42242142705)
 passed all three Windows rounds and macOS rounds one and three. The macOS
@@ -39,6 +44,12 @@ the nested Pichi test wrapper also captures its streams separately. A forced
 interleaving reproducer fails the old capture and preserves both the exact
 success marker and diagnostic with the correction. No markers or previous
 reports were relaxed or rewritten. Fresh full qualification is required again.
+
+Run [42250045380](https://github.com/pichi-vm/madrillo/actions/runs/42250045380)
+was canceled after local caller checks caught a capture-wrapper omission:
+caller-lifetime markers are emitted on stderr, so both independently captured
+streams must be checked. That correction passes the full local caller suite.
+The next full run also pins Pichi's native temporary-directory change above.
 
 The [final audit](reviews/07-completion.md) verifies all nine native reports,
 186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.
@@ -70,13 +81,14 @@ qualified pins. See the completion review for the failure link. No VM workflow
 was dispatched or retried, and no integration PR has been merged.
 
 Pichi PR #154 is ready for review but its separate CI is **not fully green**.
-Its [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912747)
-reports `monitor disconnected without completion` during build startup. The
-uploaded artifacts omit the monitor diagnostic file, so the cause remains
-unresolved; the passing ordinary-process contract does not establish that the
-real VM build succeeds. Its [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912642)
-failed when the native linker segfaulted. Windows and Linux x86_64 jobs passed.
-These separate failures were inspected read-only, without dispatching VM CI.
+Its [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994038063)
+now reports the retained startup diagnostic: `Operation not permitted`.
+The passing native launch test uses the runner's workspace `TMPDIR`, while
+Pichi previously hard-coded `/tmp`. Respecting `TMPDIR` fixes that discrepancy;
+the sandbox explanation remains a hypothesis until automatic VM CI verifies it.
+The [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994037922)
+has resumed after the runner reboot. Windows and Linux x86_64 jobs passed.
+These separate jobs were inspected read-only, without dispatching VM CI.
 
 [Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
 API request drafts were never sent. The separate integration CI failures still
