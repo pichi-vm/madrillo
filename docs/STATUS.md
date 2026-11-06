@@ -31,8 +31,10 @@ before the test kills Madrillo. That fixture now allows thirty seconds for setup
 and checks that the monitor has not completed before crash injection. The actual
 post-crash cleanup deadline remains five seconds, with leader/helper clean-exit
 markers and no fabricated result still required. Local control tests and strict
-Linux/Windows-target Clippy pass; native retesting is required. Production code
-is unchanged. Conformance instructions now reflect the public-runner scope, and
+Linux/Windows-target Clippy pass. Updated ordinary native qualification passes
+on all three public hosts at `506ab63` in [run 42230790498](https://github.com/pichi-vm/madrillo/actions/runs/42230790498).
+The separately selected full cases still require native retesting. Production
+code is unchanged. Conformance instructions now reflect the public-runner scope, and
 README includes foreground launch examples.
 
 The shared library remains serde-only with `forbid(unsafe_code)`. The executable
@@ -45,8 +47,13 @@ at `cebb9a7`: [native run](https://github.com/pichi-vm/madrillo/actions/runs/422
 The CI/fixture changes above do not change production behavior.
 
 Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft pending
-three complete public-runner conformance rounds. Its current pin `5347d9a1`
-adds the cross-platform build-channel test and retains the corrected native
+three complete public-runner conformance rounds. Its current pin `b8ddfbd3`
+resolves the conflict with current Pichi main, preserving the plain appliance
+console, network and image-display fixes. The shared launcher already preserves
+the new RUST_LOG default and explicit values. Local caller qualification passes,
+including 149 unit tests, CLI operations, guest-first exchange and crash recovery.
+The full run at `506ab63` used the preceding Pichi pin and must be superseded.
+The new pin retains the cross-platform build-channel test and corrected native
 Windows launcher and Madrillo executable pin `0e860df`. Caller qualification
 uses actual CLI operations and ordinary child processes, including native
 Windows console/Job loss. The guest/build/resize APIs remain direct Pichi–child
