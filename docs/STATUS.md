@@ -23,13 +23,17 @@ native shell, resize, reattachment, timeout, non-Unicode text and exit-code
 tests also pass. This closes the implementation gaps in C07/C09/C10/C18;
 the full conformance streak remains zero.
 
-Pichi `997f36cc` implements matching exact first-hop inheritance in a private
+Pichi `cc46a598` implements matching exact first-hop inheritance in a private
 Windows launcher. It requests independent console/Job lifetime without a
 fallback if breakaway is denied, passes actual stdio handles in the explicit
 list, and preserves Dillo's arguments. It pins Madrillo `2a7993d`. The native
 caller test now checks binary two-hop inheritance, excluded held resources and
 EOF. Linux caller execution and isolated Windows boundary compilation/strict
-lint pass. Full native integration is running; these are not VM evidence.
+lint pass. Native caller checks pass on Linux and macOS. Windows caller qualification
+found a stale assertion requiring the former incomplete ConPTY cleanup result;
+the fixture now requires complete cleanup on every host. Pichi's host-packaging
+patch has also been refreshed for its replacement Windows dependency and passes
+locally. Native reruns are required; these are not VM evidence.
 Pichi's baseline test code emits existing Clippy warnings; the changed workload
 module has no Linux diagnostics, and the Windows boundary passes the same lint
 configuration with warnings denied in isolation.

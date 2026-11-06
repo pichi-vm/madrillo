@@ -271,14 +271,7 @@ fn caller_loss_preserves_pipe_and_terminal() -> Result<()> {
                         ServerMessage::Completed { result } => {
                             assert_eq!(result.leader, LeaderResult::Exit { code: 37 });
                             assert_eq!(result.cause, CompletionCause::LeaderExit);
-                            // C04 proves independent lifetime. Windows ConPTY's
-                            // missing Job-empty evidence remains a C07 blocker.
-                            if cfg!(windows) && terminal {
-                                assert!(matches!(result.cleanup,
-                                    CleanupResult::Incomplete { ref errors } if !errors.is_empty()));
-                            } else {
-                                assert_eq!(result.cleanup, CleanupResult::Complete);
-                            }
+                            assert_eq!(result.cleanup, CleanupResult::Complete);
                             assert!(result.monitor_errors.is_empty());
                             assert!(result.log_errors.is_empty());
                             break;

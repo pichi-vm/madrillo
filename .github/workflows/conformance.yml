@@ -62,7 +62,7 @@ jobs:
           - host: macos
             runner: '["self-hosted","macOS","ARM64","bare-metal","m1"]'
             guest: aarch64-unknown-linux-musl
-            minutes: 60
+            minutes: 180
           - host: windows
             runner: '["windows-2025"]'
             guest: x86_64-unknown-linux-musl
