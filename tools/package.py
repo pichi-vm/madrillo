@@ -82,7 +82,7 @@ def main(destination):
             "revision": output("git", "rev-parse", "HEAD").strip(),
             "rust": rust, "target": host, "packages": inventory,
         }, indent=2) + "\n", encoding="utf-8")
-        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED, strict_timestamps=False) as bundle:
             for path in sorted(stage.rglob("*")):
                 if path.is_file():
                     bundle.write(path, path.relative_to(stage))

@@ -598,7 +598,7 @@ fn draining_viewer_survives_a_large_startup_burst() -> Result<(), Box<dyn std::e
 
 #[test]
 fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::error::Error>> {
-    for terminal in [false, true] {
+    for terminal in [false, true].repeat(8) {
         for mode in ["waiting-tree", "racing-tree"] {
             let root = tempfile::tempdir()?;
             let heartbeat = root.path().join("heartbeat");
@@ -625,7 +625,10 @@ fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::e
             }
             client.send(ClientMessage::Terminate)?;
             loop {
-                match client.next()? {
+                match client
+                    .next()
+                    .map_err(|error| format!("{mode}, terminal={terminal}: {error}"))?
+                {
                     ServerMessage::Prepared { .. }
                     | ServerMessage::Started { .. }
                     | ServerMessage::Output { .. } => {}

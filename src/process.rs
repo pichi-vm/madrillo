@@ -180,7 +180,11 @@ impl Workload {
         if let Some(group) = &mut self.group {
             return group.force();
         }
-        #[cfg(unix)]
+        #[cfg(target_os = "macos")]
+        {
+            force_group_macos(self.child.id())
+        }
+        #[cfg(all(unix, not(target_os = "macos")))]
         {
             use nix::{
                 errno::Errno,
@@ -190,10 +194,6 @@ impl Workload {
             let pid = i32::try_from(self.child.id()).map_err(io::Error::other)?;
             match killpg(Pid::from_raw(pid), Signal::SIGKILL) {
                 Ok(()) | Err(Errno::ESRCH) => Ok(()),
-                // XNU also returns EPERM for a zombie-only group. Final
-                // cleanup still requires observing that the group is empty.
-                #[cfg(target_os = "macos")]
-                Err(Errno::EPERM) => Ok(()),
                 Err(error) => Err(error.into()),
             }
         }
@@ -323,6 +323,33 @@ impl Workload {
         } else {
             CleanupResult::Incomplete { errors }
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn force_group_macos(leader: u32) -> io::Result<()> {
+    use nix::{
+        errno::Errno,
+        sys::signal::{Signal, killpg},
+        unistd::Pid,
+    };
+    use std::time::{Duration, Instant};
+    let group = Pid::from_raw(i32::try_from(leader).map_err(io::Error::other)?);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        // XNU signals a membership snapshot. Repeat while the unreaped leader
+        // reserves this group ID, covering children forked during delivery.
+        match killpg(group, Signal::SIGKILL) {
+            Err(Errno::ESRCH | Errno::EPERM) => return Ok(()),
+            Err(error) if error != Errno::EINTR => return Err(error.into()),
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::other(
+                "workload process group remains signalable after termination",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(5));
     }
 }
 

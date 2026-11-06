@@ -800,3 +800,20 @@ bounded pending bytes until actual backpressure. A 256 KiB startup-burst
 fixture requires complete delivery and subsequent input/EOF on the same
 attachment. Local strict Clippy and all 14 control tests pass; native Windows
 and real-VM retesting are pending. Queue limits remain unchanged.
+
+Repeating native qualification at `bdbec9e` exposed a macOS fork race:
+[run 42158989862](https://github.com/pichi-vm/madrillo/actions/runs/42158989862/job/127699857045)
+timed out after force and left a fixture descendant. XNU's
+[pgrp_iterate](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c)
+collects a membership snapshot before delivering signals. macOS force now
+repeats group SIGKILL while the unreaped leader still reserves its group ID,
+until no signalable member remains or the deadline expires. Only after that
+does it reap the leader and observe group disappearance. No termination signal
+is sent after reaping. The force fixture now executes eight iterations of each
+pipe/terminal and grandchild/forking case. Native retesting is pending.
+
+Windows packaging built and verified the binary/library and collected its
+licenses, then rejected a dependency file timestamp earlier than ZIP's 1980
+epoch. Packaging now uses ZIP's documented timestamp clamping, preserving file
+contents; a pre-1980 local fixture verifies that behavior. Native retesting is
+pending. Linux produced its native archive successfully.
