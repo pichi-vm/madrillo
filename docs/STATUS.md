@@ -639,3 +639,31 @@ extension or replay buffer. At `dd525e9a`, 138 unit tests, 12 workload/removal
 CLI tests and the explicit native initial-channel test pass locally. Clippy
 completes with existing warnings elsewhere in Pichi. New native caller
 qualification is still required. Full conformance remains zero.
+
+Native caller qualification passed on all three hosts at monitor `5f881c4`
+and Pichi `b97f82b5` (same source tree as `6e528a89` after commit-message fixes):
+[run 42148466526](https://github.com/pichi-vm/madrillo/actions/runs/42148466526).
+This resolves the Windows initial-launch qualification issue in a permitted
+caller context; the denied-breakaway case also passes without inventing an exit
+result or releasing image pins. It does not complete C04's caller-death matrix.
+
+Pichi `caceab40` adds `stop ID`, with console EOF requesting Dillo teardown and a
+10-second default grace period before forced cleanup (`--time 0` forces
+immediately). Madrillo `5c660ce` permits this administrative EOF while another
+authenticated client owns data input. Input bytes still require ownership;
+detach still leaves the liveness pipe open. No protocol message was added.
+Repeated stop reads retained completion, and workload exit status remains
+unchanged. A failed connection or termination deadline rechecks durable state;
+missing results remain unknown and pinned.
+
+The pinned monitor passes its native matrix in
+[run 42149415700](https://github.com/pichi-vm/madrillo/actions/runs/42149415700).
+Pichi's updated native caller matrix passes Linux, macOS and Windows in
+[run 42149879242](https://github.com/pichi-vm/madrillo/actions/runs/42149879242),
+including clean stop with an active writer, grace expiry, and immediate force.
+Local checks passed 139 unit tests, 30 CLI tests, and the explicit native caller
+test; Pichi Clippy still reports 23 existing warnings outside this change.
+All temporary local build and PR-body files were removed. Pichi PR 154 remains
+draft; Dillo PR 92 remains ready with all checks green. C01-C30 full conformance
+remains zero, with macOS escaped-descendant containment, Windows exact handle
+inheritance, caller containment and remaining native VM qualification unresolved.
