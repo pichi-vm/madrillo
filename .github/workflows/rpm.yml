@@ -2,6 +2,7 @@ name: Native RPM qualification (not full conformance)
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
