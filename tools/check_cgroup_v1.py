@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Run real cgroup-v1 qualification in a disposable, diskless Linux VM.
 
-The host's controllers and mounts are never changed. Requires an x86_64 Linux
-kernel with MEMCG_V1, qemu-system-x86_64, cpio, and native monitor/fixture binaries.
+The host's controllers and mounts are never changed. Requires qemu-system-x86_64,
+cpio, and native monitor/fixture binaries. Supply an x86_64 Linux kernel with
+MEMCG_V1, or let Ubuntu's apt download and extract its generic kernel package.
 Uses KVM when available and QEMU's CPU emulator otherwise. All generated files
 are removed on both success and failure. This is a test harness, not a monitor.
 """
@@ -99,10 +100,22 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("monitor", type=Path)
     parser.add_argument("fixture", type=Path)
-    parser.add_argument("kernel", type=Path)
+    parser.add_argument("kernel", type=Path, nargs="?")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="madrillo-cgroup-v1-") as temporary:
         directory = Path(temporary)
+        kernel = args.kernel
+        if kernel is None:
+            # Download and extract only: no host kernel installation, initramfs
+            # regeneration, bootloader changes or firmware packages are needed.
+            dependencies = subprocess.check_output(
+                ["apt-cache", "depends", "linux-image-generic"], text=True)
+            package = next(line.split()[-1] for line in dependencies.splitlines()
+                           if re.match(r"\s*Depends: linux-image-\d", line))
+            subprocess.run(["apt-get", "download", package], cwd=directory, check=True)
+            deb, = directory.glob("*.deb")
+            subprocess.run(["dpkg-deb", "-x", str(deb), str(directory / "kernel")], check=True)
+            kernel, = (directory / "kernel/boot").glob("vmlinuz-*")
         root = directory / "root"
         root.mkdir()
         rootfs(root, args.monitor.resolve(), args.fixture.resolve())
@@ -115,7 +128,7 @@ def main():
             output.write(archive.stdout)
         command = ["qemu-system-x86_64", "-nodefaults", "-no-reboot", "-nographic",
                    "-serial", "stdio", "-monitor", "none", "-m", "768", "-smp", "2",
-                   "-kernel", str(args.kernel.resolve()), "-initrd", str(initramfs),
+                   "-kernel", str(kernel.resolve()), "-initrd", str(initramfs),
                    "-append", "console=ttyS0 rdinit=/init panic=-1 cgroup_no_v1= "
                               "random.trust_cpu=on"]
         if os.access("/dev/kvm", os.R_OK | os.W_OK):

@@ -26,7 +26,9 @@ jobs:
       - name: Conformance gate negative tests (not conformance evidence)
         run: python3 -m unittest tools/test_conformance.py
       - name: Bare library
-        run: cargo check --locked --no-default-features --lib
+        run: |
+          cargo check --locked --no-default-features --lib
+          python3 tools/check_library.py
       - name: All owned targets
         run: cargo clippy --locked --all-targets --all-features -- -D warnings
       - name: Current tests (coverage remains pending)
@@ -49,10 +51,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 cpio linux-image-generic
-          kernel=$(rg --files /boot -g 'vmlinuz-*' | sort -V | tail -n 1)
-          test -n "$kernel"
-          sudo python3 tools/check_cgroup_v1.py target/debug/madrillo target/debug/madrillo-fixture "$kernel"
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 cpio
+          sudo python3 tools/check_cgroup_v1.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Native systemd notification relay and attribution
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_notify.py target/debug/madrillo target/debug/madrillo-fixture

@@ -883,3 +883,17 @@ removed afterward. This test is included in native CI; CI retesting is pending.
 
 V1 contracts follow [conmon's cgroup implementation](https://github.com/containers/conmon/blob/46837cd4800889521b6eccd4cce75a69249b1702/src/cgroup.c)
 and the [Linux memory-controller implementation](https://github.com/torvalds/linux/blob/master/mm/memcontrol-v1.c).
+
+The `2dbcb7a` native caller matrix with Pichi `ad4841a` passes on all three
+hosts in [run 42161795464](https://github.com/pichi-vm/madrillo/actions/runs/42161795464).
+The first v1 CI run at `4859f0e` passed the ordinary Linux suite and real v2
+qualification, but its VM setup failed because the runner has no `rg` executable.
+The setup now downloads/extracts a generic Ubuntu kernel into its temporary
+directory instead of installing kernel/firmware packages or changing boot files.
+The runner's existing kernel and controllers are left alone.
+
+The conformance manifest now has executable case mappings ready for C01's
+bare-library/safety audit and C29's native distribution. The default Cargo graph
+is checked explicitly for serde-only direct normal/build dependencies, empty
+default features and `forbid(unsafe_code)` on every owned target. Remaining
+requirements still gate full conformance; readiness is not a completed pass.

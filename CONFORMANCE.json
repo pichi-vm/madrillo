@@ -7,9 +7,10 @@
       "id": "C01",
       "behavior": "Bare library and safe owned code",
       "criterion": "Default dependency tree has no process/transport/CLI/logging runtime; every target forbids unsafe; production panic audit is clean",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "bare-library",
+        "library-audit",
         "lint"
       ],
       "evidence": [],
@@ -404,8 +405,10 @@
       "id": "C29",
       "behavior": "Native distribution",
       "criterion": "Native Linux/macOS/Windows MSVC build and execution; reproducible locked dependencies, license inventory, package contains full binary and bare lib",
-      "status": "pending",
-      "tests": [],
+      "status": "ready",
+      "tests": [
+        "native-distribution"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -504,6 +507,42 @@
         "test terminal_size_resize_reattach_and_native_exit ... ok",
         "test held_reservation_is_released_before_exit_command ... ok",
         "test exit_command_observes_final_result_and_preserves_native_arguments ... ok"
+      ]
+    },
+    {
+      "id": "library-audit",
+      "hosts": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_library.py"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "bare library audit: serde-only normal/build graph; empty defaults; every owned target forbids unsafe"
+      ]
+    },
+    {
+      "id": "native-distribution",
+      "hosts": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/package.py",
+        ".qualification/distribution"
+      ],
+      "timeout": 900,
+      "success_markers": [
+        "madrillo 0.1.0",
+        "dependency license entries"
       ]
     }
   ]
