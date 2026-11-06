@@ -36,9 +36,18 @@ and resize cases pass. These replacement heads were not substituted for the
 qualified pins. See the completion review for the failure link. No VM workflow
 was dispatched or retried, and no integration PR has been merged.
 
+Pichi PR #154 is ready for review but its separate CI is **not fully green**.
+Its [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912747)
+reports `monitor disconnected without completion` during build startup. The
+uploaded artifacts omit the monitor diagnostic file, so the cause remains
+unresolved; the passing ordinary-process contract does not establish that the
+real VM build succeeds. Its [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912642)
+failed when the native linker segfaulted. Windows and Linux x86_64 jobs passed.
+These separate failures were inspected read-only, without dispatching VM CI.
+
 [Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
-API request drafts were never sent. The remaining actions are the user's normal
-integration review and merge decisions.
+API request drafts were never sent. The separate integration CI failures still
+need resolution before merge; they are not claimed as passing by this gate.
 
 ## Historical qualification notes
 

@@ -94,6 +94,17 @@ early-input acknowledgement in `console_input_reaches_guest`; console-loss and
 resize tests pass in the [same job](https://github.com/pichi-vm/dillo/actions/runs/42238940631/job/127963842967).
 No VM workflow was dispatched to investigate or retry that separate result.
 
+Pichi's own [CI run](https://github.com/pichi-vm/pichi/actions/runs/42231906123)
+subsequently finished with two failing jobs. The [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912747)
+reports `monitor disconnected without completion` in all three build suites.
+Its retained artifact contains the client error but omits `monitor.err`, so the
+cause is unresolved. This may be an integration defect; the ordinary-process
+qualification is not evidence that the VM path passes. The [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42231906123/job/127952912642)
+failed when the native linker segfaulted while linking `staged_images`.
+Windows and Linux x86_64 passed. PR #154 is ready for review, but its separate CI
+is not fully green. These logs were inspected read-only; no VM run was dispatched
+or retried, and the qualified sources were not changed speculatively.
+
 Dillo's console-loss shutdown remains its default, and helpers follow the
 approved process-group contract. The three sequential plan reviews and twelve
 earlier simplification passes remain recorded with their historical scope
