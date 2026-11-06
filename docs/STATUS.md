@@ -82,9 +82,7 @@ Full conformance requires three fresh complete rounds on unchanged sources,
 including native Pichi caller/VM/build, Dillo, service/storage/oom fixtures,
 conmon differential behavior and distribution. The workflow rejects pending
 coverage before using runners. Its earlier rejection at `e00e529` was expected
-and does not count as a pass. Native Fedora RPM qualification now executes in
-a disposable container on Ubuntu; [run 42198663244](https://github.com/pichi-vm/madrillo/actions/runs/42198663244)
-passed packaging, offline build, execution and license payload checks.
+and does not count as a pass.
 
 [Madrillo is public](https://github.com/pichi-vm/madrillo).
 [Pichi PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft pending
@@ -646,15 +644,11 @@ worktrees and user-owned files are preserved. The final local verification ran
 inside an automatically removed temporary directory. CI now removes its monitor
 checkout after qualification, including failure and cancellation paths.
 
-Pichi's current draft revision `bf99238b` fixes the packaged host-manifest patch
-and passes its commit-message, formatting, license, spec and SRPM checks. Local
-packaging verification also applied the patch, trimmed the lock without new
-pins, resolved the locked host graph and vendored it successfully; its scratch
-copy was removed. Native caller qualification
+Native caller qualification
 [42144307625](https://github.com/pichi-vm/madrillo/actions/runs/42144307625)
-passes Linux and macOS on this revision. Windows is still running at this
-checkpoint, including a comparison of the identical launch from Bash and
-PowerShell. No launch flags have been relaxed.
+passes Linux and macOS with Pichi revision `bf99238b`. Windows is still
+running at this checkpoint, including a comparison of the identical launch
+from Bash and PowerShell. No launch flags have been relaxed.
 
 Linux notification qualification now rejects an oversized datagram without
 forwarding its valid-looking READY prefix, and exercises a genuinely full

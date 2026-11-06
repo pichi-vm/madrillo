@@ -138,10 +138,3 @@ checkout. The archive contains the executable, Cargo-verified source package,
 README, project license, dependency license texts and inventory, and Rust
 library notices. A separate SHA-256 file identifies the archive. Native CI
 retains these archives for review.
-
-For Fedora/Copr, `make -f .copr/Makefile srpm outdir=/path/to/output`
-packages the committed source and vendors the locked dependencies in a temporary
-directory. Pass `DNF=true` when the build tools are already installed. Rebuild
-the resulting source RPM with `rpmbuild --rebuild`; that phase is offline and
-installs only the `madrillo` executable, documentation and license inventory.
-Pichi's RPM requires this separate `madrillo` package alongside `dillo-vm`.
