@@ -377,7 +377,7 @@
     {
       "id": "C27",
       "behavior": "Locked build channel",
-      "criterion": "Original inherited named-port pipes, bidirectional v0 CBOR, guest-first ordering, virtiofs repo/cache/output remain unchanged",
+      "criterion": "Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged",
       "status": "pending",
       "tests": [],
       "evidence": [],

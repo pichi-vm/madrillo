@@ -62,7 +62,7 @@ behavior, ignored test, absent runner, or unimplemented path is not a pass.
 | C24 | Monitor loss | Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup |
 | C25 | Protocol and diagnostics | Fixed version, checked lengths/allocations, bounded malformed input; private native endpoint/ACL; separate diagnostics/log levels/native syslog where applicable; CLI help/version/API identity |
 | C26 | Pichi integration | Shared run/build launch, run/attach/logs/wait/stop, IDs/discovery/prune protection, terminal restore/detach/resize semantics |
-| C27 | Locked build channel | Original inherited named-port pipes, bidirectional v0 CBOR, guest-first ordering, virtiofs repo/cache/output remain unchanged |
+| C27 | Locked build channel | Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged |
 | C28 | Crash reconciliation | Missing results remain unknown; engine cleanup is idempotent; monitor death cannot claim a callback ran |
 | C29 | Native distribution | Native Linux/macOS/Windows MSVC build and execution; reproducible locked dependencies, license inventory, package contains full binary and bare lib |
 | C30 | Monitor termination events | Conmon-equivalent Unix signal forwarding without losing reaping/log finalization; native Windows cancellation semantics documented/tested; raw terminal bytes remain separate |
@@ -73,6 +73,12 @@ command can invoke engine policy. Platform-specific journald/systemd and Linux
 OOM facilities require truthful unavailable results on other hosts, not emulation.
 Core launch, pipes, attachment, descendants, timeout, retained results, and
 terminal support are required on every native host.
+
+For C27, Pichi's current `BUILD.md` and `pichi-launch` types define the wire
+contract: guest request `["build", 1, null]`, then host response `[true, Input]`
+or `[false, "error message"]`. The original plan's `v0` label was stale; it is
+not an instruction to change or restore a previous guest protocol. Madrillo
+passes these resources unchanged and does not interpret their contents.
 
 ## Architecture to implement
 
