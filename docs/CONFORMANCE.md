@@ -2,8 +2,8 @@
 
 Qualification CI is useful evidence and does not count toward the three-pass
 stopping rule. `tools/conformance.py` is the full-conformance gate. The current
-manifest deliberately remains pending, so this command records failure before
-executing any suites:
+manifest maps all thirty requirements to executable cases. Readiness permits
+execution; only verified native reports establish a pass:
 
 ```
 python3 tools/conformance.py run --round round-1 --report conformance-runs/round-1/linux.json
@@ -13,7 +13,8 @@ Each reviewed C01–C30 requirement must have `status: ready`, explicit native
 hosts, and executable test mappings. `ready` means coverage is ready to run;
 it does not mean the requirement passed. Test cases require positive output
 markers as well as exit zero, so a filter selecting zero tests is not success.
-The current case mappings are partial and must be completed before promotion.
+The manifest selects 30 Linux, 18 macOS and 14 Windows cases per round.
+Platform-specific cases run only on their declared native hosts.
 
 Run the same round on Linux, macOS, and Windows MSVC with unchanged, clean
 sources. Collect each JSON report together with its sibling log artifacts.
@@ -35,9 +36,8 @@ required. Reports and the ledger remain outside tracked implementation sources.
 The manifest's initial `clean_streak` is not accepted as evidence by the runner.
 
 The manually dispatched `conformance.yml` workflow runs three fresh rounds on
-native Linux/KVM, macOS ARM64/HVF and Windows MSVC/WHP. Its preparation job
-requires complete reviewed coverage before reserving any native runner; it
-currently fails because six requirements remain pending. Component revisions
+public Ubuntu, macOS ARM64 and Windows MSVC runners. Its preparation job
+requires complete reviewed coverage before starting the native jobs. Component revisions
 come from this manifest, and their recursive checkouts remain unchanged. Each
 host runs rounds in order; aggregation then verifies all three hosts for each
 round in order and requires a final streak of three. Partial/failed rounds are
@@ -50,63 +50,35 @@ Native Cargo caches persist between rounds; fixture workloads and executions
 are fresh. The workflow does not update the manifest's readiness or declare
 the project complete. Its artifacts still require the final requirement audit.
 
-Pichi and Dillo are part of the source identity. `CONFORMANCE.json` pins their
-repositories and immutable revisions; the native runner and aggregator require
-independent checkouts at `.qualification/components/pichi` and
-`.qualification/components/dillo`. Every checkout must be clean, including
-initialized recursive submodules at their pinned revisions. An empty component
-directory cannot fall back to the enclosing Madrillo repository. The reports
-include each component's revision and Git tree. Changing either component
-starts the streak again, even when the monitor itself has not changed.
+Pichi is part of the source identity. `CONFORMANCE.json` pins its repository
+and immutable revision; the native runner and aggregator require an independent
+checkout at `.qualification/components/pichi`. Both Madrillo and Pichi must be
+clean, with recursive submodules initialized at their pinned revisions. An empty
+component directory cannot fall back to the enclosing Madrillo repository.
+Reports include both revisions and Git trees. Changing either component starts
+the streak again, even when the monitor itself has not changed.
 
-Remaining work includes complete native case mappings and Pichi/Dillo VM/build
-evidence for the pending requirements. The full runner must fail closed while
-any requirement remains pending.
-
-The manually dispatched `dillo.yml` workflow qualifies the selected immutable
-Dillo revision against the monitor built from that workflow's source. It runs
-four real VM console-lifetime/resize cases on native KVM, HVF and WHP, including
-the explicitly selected monitor-crash case. `tools/check_dillo.py` rejects zero-test
-or ignored-only runs and requires guest input, sustained unread-input pressure,
-and a cooperative zero exit after monitor death. A separate native pipe test
-proves hangup detection with unread bytes and verifies that observation consumes
-none of them. The C24 cases run these checks against the pinned Dillo checkout;
-their native coverage review is complete, as recorded below.
-The resize case sends three non-square dimensions through Dillo's private
-endpoint and reads the guest hvc terminal size, then checks console-loss teardown.
-It uses Fedora 44's fixed virtio-console driver; older Linux kernels reverse
-the standard resize dimensions. Linux fixtures need 256 free 2 MiB hugepages
-for the largest 512 MiB guest. This focused workflow does not replace the full
-VM suite or prove Pichi's complete terminal path.
+Madrillo CI uses ordinary native child processes and does not check out or run
+Dillo, install guest toolchains, or require hardware virtualization. Pichi/Dillo
+repository workflows remain separate and must not be manually dispatched for
+this task. Linux's cgroup-v1 fixture boots a disposable kernel using QEMU's CPU
+emulator when KVM is unavailable. See the [public CI scope review](reviews/06-public-ci.md).
 
 `tools/check_pichi.py MONITOR PICHI_CHECKOUT` runs the caller unit/CLI cases and
 explicit native launch and monitor-crash fixtures. On Windows it invokes the
-existing native test host outside the runner's restrictive Job, including actual
-caller console-window closure. The command requires positive execution markers
-for unknown-state retention, idempotent storage cleanup, image pins and native
-crash reconciliation. It is shared by focused CI and the C28 case mappings; VM
-and locked build qualification remain separate requirements. Madrillo's native
-control tests additionally kill the monitor before publication and between
-publication and a delayed exit callback, checking retained evidence in each case.
+native test host outside the runner's restrictive Job, including actual caller
+console-window closure. Required positive markers cover unknown-state retention,
+idempotent storage cleanup, image pins, caller lifetime and crash reconciliation.
+Madrillo's native control tests also kill the monitor before publication and
+between publication and a delayed exit callback, checking retained evidence.
 
-`tools/check_pichi_vm.py MONITOR PICHI_CHECKOUT` runs Pichi's three existing
-real build-and-boot suites: official-image smoke, committed-submodule stores,
-and staged-image create/extend/compose. It builds the same pinned static Arma
-and Corium fixtures as Pichi's native CI, removes their temporary installation
-on exit, and requires each exact test to pass with no ignored tests. C26/C27
-map these commands on all three hosts but remain pending; executable mappings
-do not resolve Windows' unsupported opaque handle inheritance.
-
-This command requires the native hypervisor (KVM, HVF or WHP), Pichi's pinned
-`nightly-2026-07-06` with `rust-src` and `llvm-tools`, and its native guest build
-targets. Linux needs `mkfs.ext4` or the portable filesystem fixture, and 1792
-available 2 MiB hugepages for the staged build guests. macOS and Windows need
-`PICHI_TEST_ROOT_FILESYSTEM` pointing to Pichi's portable ext4 fixture. The
-command chooses the pinned toolchain's `llvm-objcopy` unless `PICHI_TEST_STRIP`
-is supplied. Existing `PICHI_TEST_BUILD_IMAGE_LAYOUT` and `PICHI_TEST_EVIDENCE`
-overrides select a rebuilt appliance and retained VM evidence respectively.
-Windows uses Pichi's existing native test runner; keep its source checkout's
-Cargo configuration clean rather than also installing that runner there.
+C26/C27 use this same command on every host. The real Pichi build CLI launches
+an ordinary child that verifies guest-first CBOR over the original inherited
+named-port pipes and records repo/cache/output mount arguments. It deliberately
+exits 37 after the exchange, and the test requires that status to propagate.
+This proves host channel preservation without claiming a successful guest build.
+The portable ext4 fixture supplies image metadata for these host tests; it is
+never booted. Pichi uses its pinned `nightly-2026-07-06` native toolchain.
 
 C28 is ready to execute on all three hosts. Source review confirms that Pichi
 reconnects through the private endpoint and reads retained completion; it never
@@ -138,7 +110,8 @@ buffer or sequence protocol is present.
 These mappings add required positive markers to the existing native test suite;
 they do not rerun the suite for each requirement. Readiness is a coverage review,
 not a conformance pass. Caller terminal/Job loss remains separately tracked by
-C04, and Windows terminal descendant cleanup remains pending under C07/C09.
+C04. Windows pipe and ConPTY cleanup require the complete Job observation
+covered by C07/C09 and the [private native boundary review](reviews/04-windows-boundary.md).
 
 C20 is ready to execute with real cgroup v2 and an isolated cgroup v1 VM on
 Linux. Both require pre-launch event registration, bounded OOM allocation,
@@ -178,20 +151,15 @@ passes all cases, alongside Pichi's actual console-window and CLI lifecycle
 fixtures. README documents that passthrough retains its external I/O owner's
 lifetime. This requirement does not claim ConPTY Job-empty evidence (C07).
 
-C24 is ready to execute through the native Dillo console cases. They require a
-booted guest, confirmed ordinary input, cooperative zero exit after console EOF,
-and the same result after killing Madrillo while unread guest input remains
-backpressured. A separate native pipe test observes writer loss without consuming
-the queued bytes. Linux, macOS/HVF and Windows/WHP have executed these cases.
-The macOS evidence is Dillo `88d507c`'s [native CI job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493463),
-including its explicitly invoked monitor-crash test with Madrillo `30437e1`;
-the monitor's production Rust sources have not changed since that revision.
-Source review confirms the console-loss request reaches the existing VM stop
-path, which stops and joins the vCPU threads. Dillo currently launches no external
-helper processes; future helpers must participate in Dillo's shutdown contract.
-The monitor's Windows pipe Job does not kill Dillo on monitor-handle loss, so the
-fixture must observe Dillo's cooperative exit, not substitute forced termination.
-The mapped commands must execute again during each full conformance round.
+C24 uses an ordinary cooperative workload on every host. It deliberately leaves
+stdin unread while writing console output; the test covers both empty input and
+saturation of the native pipe and monitor's bounded queue. Detaching must leave
+the workload alive. Killing Madrillo must close the console, allowing the leader
+to close its own helper's input, wait for that helper's clean exit, and record
+its completed cleanup. Missing monitor completion remains unknown. The Windows
+pipe Job does not kill the workload on monitor-handle loss, so forced termination
+cannot substitute for these clean-exit markers. Dillo's console-loss detection
+and VM cleanup remain Dillo's own contract and repository tests.
 
 C19 is ready to execute on all three native hosts. The first
 workload operation checks its established process group and the monitor's
@@ -206,24 +174,24 @@ restrictions. Eight fresh launches run per pipe/terminal mode. These checks use
 the documented [Windows creation flags](https://learn.microsoft.com/en-us/windows/win32/procthread/process-creation-flags).
 Linux cgroup v1/v2 probes additionally check first-code membership and that the
 monitor remains outside the workload's cgroup. The existing pre-Start gate test
-covers cancellation before authorization. These placement checks do not claim
-the separately missing ConPTY Job-empty observation.
+covers cancellation before authorization. Scope completion is verified separately
+by the descendant and native inheritance cases.
 At `321ef70`, [Linux and macOS native qualification](https://github.com/pichi-vm/madrillo/actions/runs/42194861317)
-passes this fixture, including both Linux cgroup versions. The [Windows native
+passed this fixture, including both Linux cgroup versions. The [Windows native
 caller job](https://github.com/pichi-vm/madrillo/actions/runs/42194873504/job/127815497749)
-explicitly executes the placement test outside Cargo's Job and records both
-pipe and ConPTY success markers. Source review confirms Unix setup precedes
-`exec`; Windows pipe creation is suspended through Job assignment, and ConPTY
-uses the Job attribute in the native process-creation transaction. This is
+explicitly executed the placement test outside Cargo's Job and recorded both
+pipe and ConPTY success markers. The current implementation establishes Unix
+placement before `exec`; Windows composes Job membership, exact inheritance and
+optional ConPTY in the native process-creation transaction. This is
 reviewed coverage for each future full round, not a full conformance pass.
 
 C07 now maps the descendant fixtures, both Linux cgroup versions, and the
 explicit macOS process-group boundary test. The Windows fixtures also create
 detached helpers in new console process groups, including grandchildren and
 continuous spawning during force or timeout. They require complete native Job
-cleanup evidence for pipe workloads and observe that helper heartbeats stop.
-ConPTY still lacks Job-empty observation; these fixtures cannot satisfy that
-missing evidence, and C07 remains pending. The approved macOS contract continues
+cleanup evidence for both pipe and ConPTY workloads and observe that helper
+heartbeats stop. The private Windows boundary waits for the Job's active process
+count to reach zero; a cleanup deadline remains an explicit incomplete result. The approved macOS contract continues
 to cover helpers remaining in the managed group; its escape test observes the
 bounded outside helper's natural exit before removing its temporary files.
 
@@ -281,7 +249,7 @@ workload handlers, retained logs and native signal exit status. Separate native
 shell fixtures exercise Ctrl-C through PTY/ConPTY after detach/reattach. Windows
 forced cancellation uses the authenticated Terminate request; killing the
 detached monitor is monitor loss. The force/descendant fixture exercises that
-request without hiding the separately pending ConPTY Job-empty observation.
+request and requires complete scope cleanup in both pipe and terminal modes.
 
 C08 is ready to execute. It requires a Linux fault fixture that delays the actual native
 termination syscall while the workload continues recording wall-clock samples.

@@ -137,8 +137,45 @@ best effort across monitor loss. Errors after result publication, such as an
 exit-command failure, cannot rewrite the workload result.
 
 Build the executable with `cargo build --locked --release --features cli`.
-A default library build uses only the shared types and serde. For a native
-distribution, run `python3 tools/package.py /path/to/output` from a clean
+A default library build uses only the shared types and serde.
+
+For a foreground launch on Linux or macOS, choose a state directory that does
+not exist yet:
+
+```sh
+./target/release/madrillo --state-dir ./hello-state -- printf 'hello\n'
+cat ./hello-state/console.log
+cat ./hello-state/result.json
+```
+
+On Windows, use a new directory below your private application-data directory:
+
+```powershell
+$madrilloState = Join-Path $env:LOCALAPPDATA ('madrillo-' + [guid]::NewGuid())
+.\target\release\madrillo.exe --state-dir $madrilloState -- cmd.exe /d /c echo hello
+Get-Content (Join-Path $madrilloState 'console.log')
+Get-Content (Join-Path $madrilloState 'result.json')
+```
+
+The workload starts immediately and writes to the retained CRI log. Read its
+exit status and cleanup outcome from `result.json`; the monitor's own exit code
+reports monitor success or failure. `--timeout 30` limits workload runtime to
+thirty seconds. `--terminal --size 24x80` gives the child a native PTY/ConPTY;
+the caller handles interactive input, attachment and resize through the control
+channel.
+
+A caller such as Pichi creates the independent monitor lifetime described above.
+Starting with no attached client records output immediately. An already-connected
+inherited `--control` channel receives the first live output without a client
+handshake. Later clients use `--listen`, or the default `STATE/control.sock` on
+Unix and `\\.\pipe\madrillo-PID` on Windows. Attachments receive live output,
+and retained logs provide history. Detaching
+releases input ownership while the monitor keeps the workload's input open.
+The optional `--start-gated` waits for explicit caller authorization when external
+placement must finish before workload execution. See `madrillo --help` for the
+complete option list.
+
+For a native distribution, run `python3 tools/package.py /path/to/output` from a clean
 checkout. The archive contains the executable, Cargo-verified source package,
 README, project license, dependency license texts and inventory, and Rust
 library notices. A separate SHA-256 file identifies the archive. Native CI

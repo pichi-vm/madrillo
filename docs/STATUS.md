@@ -15,7 +15,25 @@ backpressured stdin, including clean helper shutdown. The real Pichi build CLI
 also launches an ordinary fixture that checks guest-first CBOR over the original
 inherited pipes and preserves mount arguments. It deliberately exits 37 after
 the exchange; this is host contract evidence, not a guest build. Both new cases
-pass locally on Linux. Native macOS/Windows execution remains required.
+passed focused qualification on all three public hosts at `610fb555`:
+[native run](https://github.com/pichi-vm/madrillo/actions/runs/42226712804),
+[caller run](https://github.com/pichi-vm/madrillo/actions/runs/42226735473).
+
+The [first public full run](https://github.com/pichi-vm/madrillo/actions/runs/42227473524)
+passed all fourteen Windows cases in each of its three rounds. macOS completed
+all eighteen cases per round but failed the new backpressured monitor-loss case;
+the broader termination filter also selects that case. Linux evidence is still
+pending. No complete cross-platform round counts as clean.
+
+The monitor-loss fixture used a five-second workload timeout while filling the
+input pipe. A local slow-input reproduction confirms this can force the workload
+before the test kills Madrillo. That fixture now allows thirty seconds for setup
+and checks that the monitor has not completed before crash injection. The actual
+post-crash cleanup deadline remains five seconds, with leader/helper clean-exit
+markers and no fabricated result still required. Local control tests and strict
+Linux/Windows-target Clippy pass; native retesting is required. Production code
+is unchanged. Conformance instructions now reflect the public-runner scope, and
+README includes foreground launch examples.
 
 The shared library remains serde-only with `forbid(unsafe_code)`. The executable
 denies unsafe code except in its single user-approved private Windows OS-boundary
