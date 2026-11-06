@@ -1,0 +1,222 @@
+name: Full native conformance (three rounds)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      pichi: ${{ steps.coverage.outputs.pichi }}
+      dillo: ${{ steps.coverage.outputs.dillo }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require complete reviewed coverage before using native runners
+        id: coverage
+        run: |
+          python3 -B - <<'PY'
+          import json, os, re, sys
+          sys.path.insert(0, 'tools')
+          from conformance import coverage
+          manifest = json.load(open('CONFORMANCE.json'))
+          errors, _ = coverage(manifest)
+          if errors:
+              print('\n'.join(errors))
+              raise SystemExit(1)
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for name in ('pichi', 'dillo'):
+                  component = manifest['components'][name]
+                  assert component['repository'] == f'https://github.com/pichi-vm/{name}'
+                  assert re.fullmatch(r'[0-9a-f]{40}', component['revision'])
+                  output.write(f"{name}={component['revision']}\n")
+          PY
+      - name: Create Pichi's portable ext4 fixture
+        run: |
+          mkdir -p "$RUNNER_TEMP/root"
+          printf 'ID=fedora\nVERSION_ID=43\n' > "$RUNNER_TEMP/root/os-release"
+          mkfs.ext4 -q -F -b 4096 -d "$RUNNER_TEMP/root" "$RUNNER_TEMP/root.ext4" 16M
+      - uses: actions/upload-artifact@v4
+        with:
+          name: conformance-filesystem
+          path: ${{ runner.temp }}/root.ext4
+          if-no-files-found: error
+
+  native:
+    needs: prepare
+    name: Three native rounds (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: linux
+            runner: '["ubuntu-24.04"]'
+            guest: x86_64-unknown-linux-musl
+            minutes: 180
+          - host: macos
+            runner: '["self-hosted","macOS","ARM64","bare-metal","m1"]'
+            guest: aarch64-unknown-linux-musl
+            minutes: 60
+          - host: windows
+            runner: '["windows-2025"]'
+            guest: x86_64-unknown-linux-musl
+            minutes: 180
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: ${{ matrix.minutes }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Preserve source bytes and long Windows paths
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.longpaths true
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: pichi-vm/pichi
+          ref: ${{ needs.prepare.outputs.pichi }}
+          path: .qualification/components/pichi
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: pichi-vm/dillo
+          ref: ${{ needs.prepare.outputs.dillo }}
+          path: .qualification/components/dillo
+          submodules: recursive
+      - name: Install pinned native toolchains and guest targets
+        run: |
+          rustup toolchain install 1.94.0 --profile minimal --component rustfmt,clippy
+          rustup toolchain install nightly-2026-07-06 --profile minimal --component rust-src,llvm-tools
+          rustup target add --toolchain nightly-2026-07-06 x86_64-unknown-none aarch64-unknown-none-softfloat "${{ matrix.guest }}"
+          rustup default 1.94.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            .qualification/components/pichi -> target
+            .qualification/components/dillo -> target
+      - uses: actions/download-artifact@v4
+        with:
+          name: conformance-filesystem
+          path: ${{ runner.temp }}/conformance-fixtures
+      - name: Configure portable filesystem without modifying component sources
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          fixture = Path(os.environ['RUNNER_TEMP']) / 'conformance-fixtures/root.ext4'
+          assert fixture.is_file()
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write(f'PICHI_TEST_ROOT_FILESYSTEM={fixture}\n')
+          PY
+      - name: Prepare isolated Linux service, storage, cgroup and VM fixtures
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 cpio libglib2.0-dev libsystemd-dev strace
+          test -c /dev/kvm
+          if ! [ -r /dev/kvm ] || ! [ -w /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          fi
+          test -r /dev/kvm && test -w /dev/kvm
+          want=1792
+          pages=$(sysctl -n vm.nr_hugepages)
+          for attempt in 1 2 3 4 5 6; do
+            if [ "$pages" -ge "$want" ]; then break; fi
+            sync
+            echo 3 | sudo tee /proc/sys/vm/drop_caches >/dev/null
+            echo 1 | sudo tee /proc/sys/vm/compact_memory >/dev/null
+            sudo sysctl -w vm.nr_hugepages=$want
+            pages=$(sysctl -n vm.nr_hugepages)
+            sleep 3
+          done
+          test "$pages" -ge "$want"
+      - name: Execute three fresh rounds on unchanged sources
+        env:
+          CONFORMANCE_HOST: ${{ matrix.host }}
+        run: |
+          conformance_failed=0
+          for round in 1 2 3; do
+            if ! python3 -B tools/conformance.py run \
+              --round "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$round" \
+              --report "conformance-runs/round-$round/$CONFORMANCE_HOST.json"; then
+              conformance_failed=1
+            fi
+            python3 - "$round" <<'PY'
+          import os, shutil, sys
+          from pathlib import Path
+          destination = Path('conformance-runs') / f'round-{sys.argv[1]}' / os.environ['CONFORMANCE_HOST']
+          destination.mkdir(parents=True, exist_ok=True)
+          for name in ('reference', 'distribution'):
+              artifact = Path('.qualification') / name
+              if artifact.exists():
+                  shutil.move(str(artifact), destination / name)
+          PY
+          done
+          exit "$conformance_failed"
+      - name: Retain native reports and exact command logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-native-${{ matrix.host }}
+          path: conformance-runs/
+          if-no-files-found: error
+
+  aggregate:
+    needs: [prepare, native]
+    if: ${{ always() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: pichi-vm/pichi
+          ref: ${{ needs.prepare.outputs.pichi }}
+          path: .qualification/components/pichi
+          submodules: recursive
+      - uses: actions/checkout@v4
+        with:
+          repository: pichi-vm/dillo
+          ref: ${{ needs.prepare.outputs.dillo }}
+          path: .qualification/components/dillo
+          submodules: recursive
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: conformance-native-*
+          merge-multiple: true
+          path: conformance-runs/
+      - name: Verify every native artifact and require a three-pass streak
+        run: |
+          conformance_failed=0
+          for round in 1 2 3; do
+            if ! python3 -B tools/conformance.py aggregate \
+              --round "$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT-$round" \
+              --ledger conformance-runs/ledger.json \
+              "conformance-runs/round-$round/linux.json" \
+              "conformance-runs/round-$round/macos.json" \
+              "conformance-runs/round-$round/windows.json"; then
+              conformance_failed=1
+            fi
+          done
+          python3 - <<'PY'
+          import json
+          ledger = json.load(open('conformance-runs/ledger.json'))
+          assert len(ledger) == 3 and ledger[-1]['clean_streak'] == 3, ledger
+          PY
+          exit "$conformance_failed"
+      - name: Retain verified ledger, reports and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-evidence
+          path: conformance-runs/
+          if-no-files-found: error

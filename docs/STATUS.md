@@ -50,6 +50,8 @@ C26/C27 now map `tools/check_pichi_vm.py` to the three existing real VM/build
 suites on every native host. Each exact test must pass without ignored tests;
 the pinned Arma/Corium installation is temporary. The current Pichi
 `11095377` platform run is [42193468104](https://github.com/pichi-vm/pichi/actions/runs/42193468104).
+Its Linux x86 VM/build job passes. The new local harness also passes all three
+suites at that revision; staged-image testing completes in 307.04 seconds.
 Windows opaque handle inheritance remains unsupported, so these requirements
 remain pending despite the new executable mappings.
 
@@ -60,6 +62,13 @@ limits. The Windows test requires a successful outside breakaway control before
 requiring denied breakaway inside the workload and its helper. It runs through
 the existing native caller harness outside Cargo's restrictive Job. Native
 macOS/Windows qualification is pending; no C19 promotion is claimed yet.
+
+The full-conformance workflow now orchestrates three fresh rounds per native
+host, retains reports/logs/distributions/reference artifacts, and aggregates
+each round before requiring a streak of three. Its preparation step rejects
+pending coverage before scheduling native runners. Per-round conmon source
+trees are retained separately so the next round cannot reuse an old build.
+This is orchestration, not evidence that any full round has passed.
 
 The macOS scope decision is settled: descendants stay in the workload's managed
 process group. Dillo owns shutdown of helpers it deliberately moves outside it.

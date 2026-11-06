@@ -34,6 +34,22 @@ a new streak. Three fresh successful aggregates on the same source identity are
 required. Reports and the ledger remain outside tracked implementation sources.
 The manifest's initial `clean_streak` is not accepted as evidence by the runner.
 
+The manually dispatched `conformance.yml` workflow runs three fresh rounds on
+native Linux/KVM, macOS ARM64/HVF and Windows MSVC/WHP. Its preparation job
+requires complete reviewed coverage before reserving any native runner; it
+currently fails because seven requirements remain pending. Component revisions
+come from this manifest, and their recursive checkouts remain unchanged. Each
+host runs rounds in order; aggregation then verifies all three hosts for each
+round in order and requires a final streak of three. Partial/failed rounds are
+also aggregated, including absent reports from an interrupted native job.
+
+Reports, exact command logs, native distributions, and the pinned conmon oracle
+artifacts are retained per round. Moving each round's oracle out of the next
+round's build directory preserves evidence and forces a fresh reference build.
+Native Cargo caches persist between rounds; fixture workloads and executions
+are fresh. The workflow does not update the manifest's readiness or declare
+the project complete. Its artifacts still require the final requirement audit.
+
 Pichi and Dillo are part of the source identity. `CONFORMANCE.json` pins their
 repositories and immutable revisions; the native runner and aggregator require
 independent checkouts at `.qualification/components/pichi` and
@@ -43,10 +59,9 @@ directory cannot fall back to the enclosing Madrillo repository. The reports
 include each component's revision and Git tree. Changing either component
 starts the streak again, even when the monitor itself has not changed.
 
-Remaining harness work includes full failure-injection and native case mappings,
-pinned conmon build/differential artifacts, pichi/dillo integration evidence,
-and native CI round orchestration. Until those are present,
-the full runner must fail closed while any requirement remains pending.
+Remaining work includes complete native case mappings and Pichi/Dillo VM/build
+evidence for the pending requirements. The full runner must fail closed while
+any requirement remains pending.
 
 The manually dispatched `dillo.yml` workflow qualifies the selected immutable
 Dillo revision against the monitor built from that workflow's source. It runs
