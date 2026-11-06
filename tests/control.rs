@@ -713,6 +713,62 @@ fn detach_releases_writer_without_closing_child_input() -> Result<(), Box<dyn st
 }
 
 #[test]
+fn input_end_releases_writer_and_keeps_output_attached() -> Result<(), Box<dyn std::error::Error>> {
+    let mut monitor = Monitor::spawn("echo")?;
+    let mut first = monitor.connect()?;
+    first.attach(true)?;
+    first.send(ClientMessage::InputEnd)?;
+    let mut second = monitor.connect()?;
+    second.attach(true)?;
+    let bytes = b"new writer\0\xff\x04".to_vec();
+    second.send(ClientMessage::Input {
+        bytes: bytes.clone(),
+    })?;
+    let expected = ServerMessage::Output {
+        stream: "stdout".into(),
+        bytes,
+    };
+    assert_eq!(first.next()?, expected);
+    assert_eq!(second.next()?, expected);
+    second.send(ClientMessage::CloseInput)?;
+    for client in [&mut first, &mut second] {
+        assert!(matches!(client.next()?, ServerMessage::Completed { result }
+            if result.leader == (madrillo::LeaderResult::Exit { code: 0 })));
+    }
+    monitor.wait()
+}
+
+#[test]
+fn observer_limit_preserves_existing_control() -> Result<(), Box<dyn std::error::Error>> {
+    // Fill the endpoint while gated: this tests the connection bound without
+    // spending the workload's runtime deadline on attachment setup.
+    let (mut monitor, mut initial) = Monitor::initial("sleep", true)?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    let mut viewers = Vec::new();
+    for _ in 0..64 {
+        let mut viewer = monitor.connect()?;
+        if viewer.attach(false).is_err() {
+            break;
+        }
+        viewers.push(viewer);
+    }
+    assert!(
+        viewers.len() > 1 && viewers.len() < 64,
+        "{} viewers",
+        viewers.len()
+    );
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    initial.send(ClientMessage::Terminate)?;
+    assert!(
+        matches!(initial.next()?, ServerMessage::Completed { result }
+        if result.cause == CompletionCause::Forced)
+    );
+    drop(viewers);
+    monitor.wait()
+}
+
+#[test]
 fn administrative_eof_does_not_require_taking_the_active_writer()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut monitor = Monitor::spawn("echo")?;

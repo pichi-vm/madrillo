@@ -39,9 +39,11 @@
       "id": "C03",
       "behavior": "Startup and first output",
       "criterion": "Prepare endpoint/logs/scope before authorized execution; immediate output/exit retained; gated pre-Start EOF launches nothing",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "linux-cgroup-v2",
+        "linux-cgroup-v1"
       ],
       "evidence": [],
       "hosts": [
@@ -82,7 +84,7 @@
       "id": "C06",
       "behavior": "Input ownership",
       "criterion": "One writer, bounded observers, release on disconnect, explicit pipe EOF; retained writer survives zero clients; Ctrl-D remains bytes",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests"
       ],
@@ -542,7 +544,13 @@
         "test partial_chunks_retain_the_original_payload ... ok",
         "test empty_capture_does_not_create_a_record ... ok",
         "test named_capture_preserves_binary_bytes_separately_from_console ... ok",
-        "test disabled_and_passthrough_log_drivers_preserve_native_execution ... ok"
+        "test disabled_and_passthrough_log_drivers_preserve_native_execution ... ok",
+        "test pre_start_disconnect_cancels_and_start_authorizes_execution ... ok",
+        "test input_end_releases_writer_and_keeps_output_attached ... ok",
+        "test observer_limit_preserves_existing_control ... ok",
+        "test administrative_eof_does_not_require_taking_the_active_writer ... ok",
+        "test close_input_drains_preceding_accepted_bytes ... ok",
+        "test detached_timeout_preserves_reason_and_console_lifetime ... ok"
       ]
     },
     {

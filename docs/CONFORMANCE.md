@@ -115,3 +115,14 @@ executes the packaged monitor, and verifies the executable and license payload.
 Missing build tools fail the case. A full round also needs a fresh
 `.qualification/reference` directory: the conmon builder rejects reuse of an
 existing oracle source tree.
+
+C03/C06 are ready to execute on all native hosts. Startup cases require the
+prepared endpoint/logs, immediate output and exit, cancellation on pre-Start
+disconnect, and execution only after authorization; Linux also runs real
+pre-exec cgroup placement fixtures. Input cases cover the single writer,
+literal Ctrl-D/binary pipe bytes, disconnect and InputEnd handoff, retained
+output attachment after handoff, explicit administrative EOF, and draining
+accepted bytes before EOF. The observer-capacity fixture fills the endpoint
+until an excess client is rejected, then uses an existing connection to start
+and terminate the workload. A rejected attachment cannot stand in for a dead
+or unresponsive monitor.
