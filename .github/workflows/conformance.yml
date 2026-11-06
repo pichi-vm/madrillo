@@ -79,8 +79,20 @@ jobs:
           git config --global core.longpaths true
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v6
+        if: runner.os != 'macOS'
         with:
           python-version: '3.13'
+      - name: Install relocatable Python on the native Mac runner
+        if: runner.os == 'macOS'
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        env:
+          UV_PYTHON_INSTALL_DIR: ${{ runner.temp }}/madrillo-python
+        with:
+          python-version: '3.13'
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/madrillo-python-env
+          enable-cache: false
+          cache-local-path: ${{ runner.temp }}/madrillo-uv-cache
       - uses: actions/checkout@v4
         with:
           repository: pichi-vm/pichi
@@ -171,6 +183,10 @@ jobs:
           name: conformance-native-${{ matrix.host }}
           path: conformance-runs/
           if-no-files-found: error
+
+      - name: Remove the native Mac Python environment
+        if: always() && runner.os == 'macOS'
+        run: rm -rf "$RUNNER_TEMP/madrillo-python-env" "$RUNNER_TEMP/madrillo-python" "$RUNNER_TEMP/madrillo-uv-cache"
 
   aggregate:
     needs: [prepare, native]

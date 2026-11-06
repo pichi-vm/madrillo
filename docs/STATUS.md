@@ -24,28 +24,29 @@ native shell, resize, reattachment, timeout, non-Unicode text and exit-code
 tests also pass. This closes the implementation gaps in C07/C09/C10/C18;
 the full conformance streak remains zero.
 
-Pichi `cc46a598` implements matching exact first-hop inheritance in a private
-Windows launcher. It requests independent console/Job lifetime without a
-fallback if breakaway is denied, passes actual stdio handles in the explicit
-list, and preserves Dillo's arguments. It pins Madrillo `2a7993d`. The native
-caller test now checks binary two-hop inheritance, excluded held resources and
-EOF. Linux caller execution and isolated Windows boundary compilation/strict
-lint pass. Native caller checks pass on Linux and macOS. Windows caller qualification
-found a stale assertion requiring the former incomplete ConPTY cleanup result;
-the fixture now requires complete cleanup on every host. Pichi's host-packaging
-patch has also been refreshed for its replacement Windows dependency and passes
-locally. Native reruns are required; these are not VM evidence.
-Pichi's baseline test code emits existing Clippy warnings; the changed workload
-module has no Linux diagnostics, and the Windows boundary passes the same lint
-configuration with warnings denied in isolation.
+Pichi's native caller qualification at `cc46a598` passes Linux, macOS and
+Windows in [run 42217876436](https://github.com/pichi-vm/madrillo/actions/runs/42217876436).
+Windows explicitly proves exact two-hop binary inheritance, excluded held
+resources, EOF, Job placement, denied breakaway, caller Job/window loss, and
+interactive run/attach/detach/resize/stop. All twelve generic pipe/terminal
+caller-loss cases now require and achieve complete cleanup. Pichi's updated
+host packaging patch also passes. The current pin `75774bb8` changes only
+CI Python setup after that run; production source is unchanged.
+
+The first full-conformance dispatch at `57b24db` was canceled after the separate
+Mac VM job demonstrated that `actions/setup-python` tries to install under
+unwritable `/Users`. Full conformance and Pichi's native Mac job now use a
+relocatable Python environment in the runner temporary directory, cleaned at
+job completion. This requires no runner permission change. VM/build integration
+and the full three-round ledger remain unverified.
 
 Pichi's last complete Linux x86 and ARM64 VM/build evidence is at `b41333b8` in
 [run 42196385368](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
 Both hosts passed smoke boot, committed-submodule builds, and staged-image
 create/extend/compose. Its Windows cases reached the former exact-inheritance
 rejection; the macOS job failed before compilation because Python lacked
-`tomllib`. The current Pichi workflow and full-conformance workflow explicitly
-install Python 3.13. Native reruns must validate the new launcher and pin.
+`tomllib`. Both workflows explicitly install Python 3.13, with relocatable installation
+on the self-hosted Mac. Native reruns must validate the new launcher and pin.
 
 Dillo `88d507c` remains the component pin. Ordinary input, console EOF,
 full-buffer monitor loss and guest resize passed on native Linux, Windows and
