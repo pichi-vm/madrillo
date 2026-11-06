@@ -1,0 +1,21 @@
+name: Native RPM qualification (not full conformance)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rpm:
+    runs-on: ubuntu-24.04
+    container: registry.fedoraproject.org/fedora:44
+    timeout-minutes: 30
+    steps:
+      - name: Install native RPM build tools
+        run: dnf -y install cargo rust cargo-rpm-macros rpm-build gcc git make tar xz gzip python3 findutils
+      - uses: actions/checkout@v4
+      - name: Build and execute the standalone monitor package
+        run: python3 -B tools/check_rpm.py
