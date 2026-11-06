@@ -110,7 +110,7 @@ mod windows {
                 std_input: Some((&input).into()),
                 std_output: Some((&stdout).into()),
                 std_error: Some((&stderr).into()),
-                ..Default::default()
+                ..process::StartupInfoExW::default().startup_info
             },
         };
         let executable = std::env::current_exe()?;
