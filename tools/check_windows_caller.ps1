@@ -17,6 +17,12 @@ if ($Request) {
         # Cargo-built executables directly, outside that additional Job.
         $code = 0
         foreach ($test in $configuration.tests) {
+            if ($test.required) {
+                $names = & $test.executable --list
+                if ($LASTEXITCODE -ne 0 -or $names -notcontains "$($test.required): test") {
+                    throw "Missing native acceptance test: $($test.required)"
+                }
+            }
             "Running $($test.executable) $($test.arguments -join ' ')" | Add-Content -LiteralPath $configuration.log
             $testArguments = @($test.arguments)
             & $test.executable @testArguments *>> $configuration.log
@@ -66,7 +72,11 @@ try {
     $tests = @($artifacts | ForEach-Object { @{ executable = $_.executable; arguments = @() } })
     $unit = @($artifacts | Where-Object { $_.target.name -eq 'pichi' -and $_.target.kind -contains 'lib' })
     if ($unit.Count -ne 1) { throw 'Cannot identify the caller library test executable' }
-    $tests += @{ executable = $unit[0].executable; arguments = @('native_monitor_launch_and_async_control', '--ignored', '--nocapture') }
+    $tests += @{
+        executable = $unit[0].executable
+        arguments = @('native_monitor_launch_and_async_control', '--ignored', '--nocapture')
+        required = 'cmd::workload::tests::native_monitor_launch_and_async_control'
+    }
     @{
         environment = $environment
         directory = $directory

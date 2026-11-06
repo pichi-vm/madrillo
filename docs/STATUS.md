@@ -622,3 +622,20 @@ The harness now builds the same five test executables with Cargo, runs them
 directly from the WMI host, and requests breakaway when creating that host.
 These are test-context corrections; no production flags or lifetime guarantees
 were relaxed. Native confirmation remains required.
+
+Native confirmation now passes: in [run 42147440403](https://github.com/pichi-vm/madrillo/actions/runs/42147440403),
+Windows completed 135 unit tests, 24 applicable CLI tests, and the explicit
+native initial-channel/reconnect test under the corrected WMI host. The Unix
+Python workload fixture file contains zero Windows tests, so it supplies no
+Windows build-channel or logs evidence. Linux and macOS caller selections also
+passed. The overall diagnostic workflow remained red because it deliberately
+reproduced the ordinary restricted-Job launch failures first. The workflow now
+uses an explicit denial test for that context, preserving unknown state and
+image pins, and runs the complete caller selection in the permitted context.
+
+Pichi also implements `logs ID` as a bounded snapshot of retained CRI records,
+preserving binary stdout/stderr and partial-line fragments without a protocol
+extension or replay buffer. At `dd525e9a`, 138 unit tests, 12 workload/removal
+CLI tests and the explicit native initial-channel test pass locally. Clippy
+completes with existing warnings elsewhere in Pichi. New native caller
+qualification is still required. Full conformance remains zero.

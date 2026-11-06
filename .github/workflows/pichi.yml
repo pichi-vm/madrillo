@@ -73,31 +73,6 @@ jobs:
         run: |
           git -C monitor rev-parse HEAD
           git -C pichi rev-parse HEAD
-      - name: Probe Windows creation flags from Bash
-        if: runner.os == 'Windows'
-        run: |
-          python3 - <<'PY'
-          import subprocess, sys
-          for name, flags in [("detached", 0x208), ("detached and breakaway", 0x1000208)]:
-              try:
-                  result = subprocess.run([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags, timeout=10)
-                  print(name, "exit", result.returncode, flush=True)
-              except OSError as error:
-                  print(name, repr(error), flush=True)
-          PY
-      - name: Probe Windows creation flags from PowerShell
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          @'
-          import subprocess, sys
-          for name, flags in [("detached", 0x208), ("detached and breakaway", 0x1000208)]:
-              try:
-                  result = subprocess.run([sys.executable, "-c", "pass"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags, timeout=10)
-                  print(name, "exit", result.returncode, flush=True)
-              except OSError as error:
-                  print(name, repr(error), flush=True)
-          '@ | python3 -
       - name: Build native monitor and workload fixture
         working-directory: monitor
         run: cargo +1.94.0 build --locked --features qualification --bins
@@ -105,18 +80,22 @@ jobs:
         working-directory: pichi
         run: cargo +nightly-2026-07-06 fmt --all -- --check
       - name: Caller unit and CLI qualification
+        if: runner.os != 'Windows'
         working-directory: pichi
         run: cargo +nightly-2026-07-06 test --locked -p pichi --lib --test cmd_workload --test cmd_build --test cmd_run --test cmd_rmi
       - name: Native initial channel and reconnect
+        if: runner.os != 'Windows'
         working-directory: pichi
         run: cargo +nightly-2026-07-06 test --locked -p pichi --lib native_monitor_launch_and_async_control -- --ignored --nocapture
-      - name: Compare native launch from PowerShell
-        if: runner.os == 'Windows' && !cancelled()
-        shell: pwsh
+      - name: Windows denied breakaway retains unknown workload state
+        if: runner.os == 'Windows'
         working-directory: pichi
-        run: cargo +nightly-2026-07-06 test --locked -p pichi --lib native_monitor_launch_and_async_control -- --ignored --nocapture
+        run: |
+          cargo +nightly-2026-07-06 test --locked -p pichi --lib denied_job_breakaway_keeps_workload_unknown -- --list |
+            tr -d '\r' | grep -Fx 'cmd::workload::tests::denied_job_breakaway_keeps_workload_unknown: test'
+          cargo +nightly-2026-07-06 test --locked -p pichi --lib denied_job_breakaway_keeps_workload_unknown -- --ignored --nocapture
       - name: Qualify Windows caller outside the runner Job
-        if: runner.os == 'Windows' && !cancelled()
+        if: runner.os == 'Windows'
         shell: pwsh
         working-directory: monitor
         run: ./tools/check_windows_caller.ps1
