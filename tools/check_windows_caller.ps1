@@ -77,6 +77,11 @@ try {
         arguments = @('native_monitor_launch_and_async_control', '--ignored', '--nocapture')
         required = 'cmd::workload::tests::native_monitor_launch_and_async_control'
     }
+    $tests += @{
+        executable = $unit[0].executable
+        arguments = @('cmd::workload::tests::job::caller_job_loss_preserves_workload', '--exact', '--ignored', '--nocapture')
+        required = 'cmd::workload::tests::job::caller_job_loss_preserves_workload'
+    }
     @{
         environment = $environment
         directory = $directory
