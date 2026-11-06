@@ -66,6 +66,22 @@ def save(path, value):
     temporary.replace(path)
 
 
+def toolchain_error(host, compiler):
+    if not isinstance(compiler, str):
+        return "native compiler evidence is missing"
+    target = re.search(r"^host: (\S+)$", compiler, re.MULTILINE)
+    if not target:
+        return "native compiler target is missing"
+    target = target[1]
+    if host == "windows" and not target.endswith("-pc-windows-msvc"):
+        return "Windows conformance requires the native MSVC toolchain"
+    if host == "macos" and not target.endswith("-apple-darwin"):
+        return "macOS conformance requires a native Darwin toolchain"
+    if host == "linux" and "-linux-" not in target:
+        return "Linux conformance requires a native Linux toolchain"
+    return None
+
+
 def coverage(manifest):
     errors = []
     requirements = manifest["requirements"]
@@ -107,6 +123,9 @@ def run(args):
         report["errors"].append("unsupported native host")
     if not report["errors"]:
         report["rustc"] = subprocess.check_output(["rustc", "-vV"], cwd=ROOT, text=True)
+        if error := toolchain_error(host, report["rustc"]):
+            report["errors"].append(error)
+    if not report["errors"]:
         for name, case in cases.items():
             if host not in case["hosts"]:
                 continue
@@ -165,6 +184,8 @@ def aggregate(args):
             errors.append(f'{path}: source identity mismatch')
         if report.get("round") != args.round:
             errors.append(f'{path}: round identity mismatch')
+        if error := toolchain_error(report.get("host"), report.get("rustc")):
+            errors.append(f"{path}: {error}")
         expected = {name for name, case in cases.items() if report.get("host") in case["hosts"]}
         if set(report.get("cases", {})) != expected:
             errors.append(f'{path}: missing or unexpected native cases')

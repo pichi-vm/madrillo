@@ -24,6 +24,10 @@ identity, actual exit status, output markers and artifact hashes:
 python3 tools/conformance.py aggregate --round round-1 --ledger conformance-runs/ledger.json conformance-runs/round-1/linux.json conformance-runs/round-1/macos.json conformance-runs/round-1/windows.json
 ```
 
+Both the native runner and aggregator require compiler-target evidence for the
+reported operating system. Windows must use MSVC; a MinGW/GNU report cannot
+count even when its tests returned zero. Missing compiler evidence also fails.
+
 Aggregate failed and missing-native rounds too; they reset the streak. Reusing a
 round or native invocation cannot count again. Changes to source identity start
 a new streak. Three fresh successful aggregates on the same source identity are

@@ -37,12 +37,15 @@ class EvidenceGate(unittest.TestCase):
 
     def reports(self, round_id):
         paths = []
+        targets = {"linux": "x86_64-unknown-linux-gnu", "macos": "aarch64-apple-darwin",
+                   "windows": "x86_64-pc-windows-msvc"}
         for host in gate.HOSTS.values():
             path = self.root / f"{round_id}-{host}.json"
             log = path.with_suffix(".log")
             log.write_bytes(b"fixture executed\n")
             path.write_text(json.dumps({
                 "source": self.source, "round": round_id, "host": host, "invocation": f"{round_id}-{host}",
+                "rustc": f"rustc test-fixture\nhost: {targets[host]}\n",
                 "clean": True, "errors": [], "cases": {"fixture": {"passed": True, "returncode": 0,
                 "command": ["synthetic-fixture"], "log": log.name, "sha256": hashlib.sha256(log.read_bytes()).hexdigest()}}}))
             paths.append(path)
@@ -98,6 +101,34 @@ class EvidenceGate(unittest.TestCase):
         self.manifest["requirements"][6]["status"] = "pending"
         (self.root / "CONFORMANCE.json").write_text(json.dumps(self.manifest))
         self.assertEqual(self.aggregate("pending", self.reports("pending")), (1, 0))
+
+    def test_non_native_or_missing_compiler_evidence_resets(self):
+        self.assertEqual(self.aggregate("native", self.reports("native")), (0, 1))
+        for host, target in [("windows", "x86_64-pc-windows-gnu"),
+                             ("macos", "x86_64-unknown-linux-gnu"),
+                             ("linux", "aarch64-apple-darwin"), ("windows", None)]:
+            name = f"{host}-{target}"
+            paths = self.reports(name)
+            path = next(path for path in paths if path.name.endswith(f"-{host}.json"))
+            report = json.loads(path.read_text())
+            if target is None:
+                report.pop("rustc")
+            else:
+                report["rustc"] = f"host: {target}\n"
+            path.write_text(json.dumps(report))
+            self.assertEqual(self.aggregate(name, paths), (1, 0))
+
+    def test_windows_gnu_is_rejected_before_running_cases(self):
+        report = self.root / "gnu.json"
+        with patch.object(gate.platform, "system", return_value="Windows"), \
+             patch.object(gate.subprocess, "check_output", return_value="host: x86_64-pc-windows-gnu\n"), \
+             patch.object(gate.subprocess, "run") as execute, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(gate.run(argparse.Namespace(round="gnu", report=report)), 1)
+            execute.assert_not_called()
+        result = json.loads(report.read_text())
+        self.assertFalse(result["clean"])
+        self.assertEqual(result["cases"], {})
+        self.assertIn("Windows conformance requires the native MSVC toolchain", result["errors"])
 
 
 class NativeSourceIdentity(unittest.TestCase):
