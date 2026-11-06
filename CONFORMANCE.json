@@ -24,7 +24,7 @@
       "id": "C02",
       "behavior": "Native launch",
       "criterion": "Preserve native argv/env/cwd including non-ASCII and native non-Unicode values; typed spawn errors; no shell interpolation",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests"
       ],
@@ -67,7 +67,7 @@
       "id": "C05",
       "behavior": "Reconnection",
       "criterion": "Initial connection and later endpoint attach work; no replay race or unbounded historical backlog",
-      "status": "pending",
+      "status": "ready",
       "tests": [
         "current-tests"
       ],
@@ -506,7 +506,12 @@
         "test initial_connection_retains_first_output_without_waiting_for_a_handshake ... ok",
         "test terminal_size_resize_reattach_and_native_exit ... ok",
         "test held_reservation_is_released_before_exit_command ... ok",
-        "test exit_command_observes_final_result_and_preserves_native_arguments ... ok"
+        "test exit_command_observes_final_result_and_preserves_native_arguments ... ok",
+        "test native_arguments_are_not_shell_interpreted ... ok",
+        "test native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes ... ok",
+        "test spawn_failure_is_retained_without_fake_success ... ok",
+        "test detach_releases_writer_without_closing_child_input ... ok",
+        "test draining_viewer_survives_a_large_startup_burst ... ok"
       ]
     },
     {

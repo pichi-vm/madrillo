@@ -33,4 +33,27 @@ The manifest's initial `clean_streak` is not accepted as evidence by the runner.
 Remaining harness work includes full failure-injection and native case mappings,
 pinned conmon build/differential artifacts, pichi/dillo source identity and
 integration evidence, and native CI round orchestration. Until those are present,
-C01–C30 coverage remains pending and the full runner must fail closed.
+the full runner must fail closed while any requirement remains pending.
+
+## Reviewed native launch and reconnection coverage
+
+C02 is ready to execute on all three native hosts. The required positive markers
+cover literal shell metacharacters, empty arguments, trailing backslashes,
+embedded quotes, native non-Unicode argv/environment, working-directory
+selection, and retained spawn failure. Both pipe and terminal modes run the
+native context fixture. APFS rejects invalid filename bytes itself; that case
+uses a Unicode working directory while still verifying raw argv/environment.
+The source uses native process APIs and retains a typed `SpawnFailed` outcome.
+
+C05 is ready to execute on all three native hosts. Required markers cover an
+inherited initial connection receiving immediate first output without sending
+a handshake, endpoint reattachment after writer disconnect, terminal reconnect,
+and a draining viewer receiving a large startup burst. The disconnect fixture
+checks that a new attachment receives only newly emitted bytes. Source review
+confirms attachment queues contain pending delivery only: no historical replay
+buffer or sequence protocol is present.
+
+These mappings add required positive markers to the existing native test suite;
+they do not rerun the suite for each requirement. Readiness is a coverage review,
+not a conformance pass. Caller terminal/Job loss remains separately tracked by
+C04, and Windows terminal descendant cleanup remains pending under C07/C09.

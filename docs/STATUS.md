@@ -1,7 +1,9 @@
 # Implementation status
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
-**0 of 3 consecutive clean passes**. All C01-C30 entries remain pending.
+**0 of 3 consecutive clean passes**. C01, C02, C05, and C29 have reviewed
+coverage ready to execute; the remaining entries are pending. The notes below
+record incremental work and do not supersede the current conformance manifest.
 
 Implemented so far:
 
