@@ -18,4 +18,6 @@ jobs:
         run: dnf -y install cargo rust cargo-rpm-macros rpm-build gcc git make tar xz gzip python3 findutils
       - uses: actions/checkout@v4
       - name: Build and execute the standalone monitor package
-        run: python3 -B tools/check_rpm.py
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          python3 -B tools/check_rpm.py
