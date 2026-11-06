@@ -75,6 +75,13 @@ passes all three hosts, including the explicit Windows placement fixture.
 Linux/macOS placement and both Linux cgroup versions pass in the native build
 workflow above. C19 is ready; ConPTY Job-empty observation remains a C07 gap.
 
+C07's executable mappings now require the descendant fixtures, both Linux
+cgroup versions, and the explicit macOS escape boundary. Windows fixtures
+add detached console groups and null stdio for helpers/grandchildren and
+concurrent spawning; pipe-mode tests require complete Job cleanup evidence.
+Linux descendant/force cases and strict Linux/Windows checks pass locally.
+Native Windows execution is pending. C07 and the full streak remain pending.
+
 The full-conformance workflow now orchestrates three fresh rounds per native
 host, retains reports/logs/distributions/reference artifacts, and aggregates
 each round before requiring a streak of three. Its preparation step rejects

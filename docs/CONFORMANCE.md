@@ -217,6 +217,16 @@ pipe and ConPTY success markers. Source review confirms Unix setup precedes
 uses the Job attribute in the native process-creation transaction. This is
 reviewed coverage for each future full round, not a full conformance pass.
 
+C07 now maps the descendant fixtures, both Linux cgroup versions, and the
+explicit macOS process-group boundary test. The Windows fixtures also create
+detached helpers in new console process groups, including grandchildren and
+continuous spawning during force or timeout. They require complete native Job
+cleanup evidence for pipe workloads and observe that helper heartbeats stop.
+ConPTY still lacks Job-empty observation; these fixtures cannot satisfy that
+missing evidence, and C07 remains pending. The approved macOS contract continues
+to cover helpers remaining in the managed group; its escape test observes the
+bounded outside helper's natural exit before removing its temporary files.
+
 C11/C12 are ready to execute with native CRI, partial/binary pipe, merged
 terminal, extra-stream, disabled-log and passthrough cases. Linux additionally
 builds the pinned conmon source afresh and compares real file and journal

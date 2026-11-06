@@ -291,7 +291,6 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
     let heartbeat = root.path().join("heartbeat");
     let result = run(root.path(), "tree", &[], &[heartbeat.as_os_str()])?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
     assert_eq!(
         result.cleanup,
         madrillo::CleanupResult::Complete,
@@ -311,9 +310,9 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
 #[test]
 fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn std::error::Error>>
 {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     let modes = ["deep-tree", "waiting-tree", "racing-tree"];
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let modes = [
         "deep-tree",
         "waiting-tree",
@@ -343,12 +342,13 @@ fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn
                 },
                 "{mode}: {result:?}"
             );
-            #[cfg(any(target_os = "linux", target_os = "macos"))]
-            assert_eq!(
-                result.cleanup,
-                madrillo::CleanupResult::Complete,
-                "{mode}: {result:?}"
-            );
+            if !cfg!(windows) || !terminal {
+                assert_eq!(
+                    result.cleanup,
+                    madrillo::CleanupResult::Complete,
+                    "{mode}: {result:?}"
+                );
+            }
             let before = fs::read(&heartbeat)?;
             assert!(!before.is_empty(), "{mode} did not start its descendants");
             std::thread::sleep(Duration::from_millis(150));

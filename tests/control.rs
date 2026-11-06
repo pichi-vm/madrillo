@@ -644,9 +644,9 @@ fn draining_viewer_survives_a_large_startup_burst() -> Result<(), Box<dyn std::e
 
 #[test]
 fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(not(any(target_os = "linux", windows)))]
     let modes = ["waiting-tree", "racing-tree"];
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", windows))]
     let modes = [
         "waiting-tree",
         "racing-tree",
@@ -689,12 +689,13 @@ fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::e
                     | ServerMessage::Output { .. } => {}
                     ServerMessage::Completed { result } => {
                         assert_eq!(result.cause, CompletionCause::Forced, "{result:?}");
-                        #[cfg(any(target_os = "linux", target_os = "macos"))]
-                        assert_eq!(
-                            result.cleanup,
-                            madrillo::CleanupResult::Complete,
-                            "{result:?}"
-                        );
+                        if !cfg!(windows) || !terminal {
+                            assert_eq!(
+                                result.cleanup,
+                                madrillo::CleanupResult::Complete,
+                                "{result:?}"
+                            );
+                        }
                         break;
                     }
                     response => {

@@ -547,20 +547,28 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 std::fs::create_dir(&nested)?;
                 std::fs::write(nested.join("cgroup.procs"), b"0")?;
             }
-            let mut child = Command::new(std::env::current_exe()?)
-                .arg(match args[0].to_str() {
-                    Some("branch") => "descendant",
-                    Some("escaped-branch") => "escaped-descendant",
-                    Some(
-                        "daemon-tree"
-                        | "waiting-daemon-tree"
-                        | "escaped-leader"
-                        | "nested-cgroup-tree",
-                    ) => "escaped-branch",
-                    _ => "branch",
-                })
-                .arg(path)
-                .spawn()?;
+            let child_mode = match args[0].to_str() {
+                Some("branch") => "descendant",
+                Some("escaped-branch") => "escaped-descendant",
+                Some(
+                    "daemon-tree" | "waiting-daemon-tree" | "escaped-leader" | "nested-cgroup-tree",
+                ) => "escaped-branch",
+                _ => "branch",
+            };
+            let mut command = Command::new(std::env::current_exe()?);
+            command.arg(child_mode).arg(path);
+            #[cfg(windows)]
+            if child_mode.starts_with("escaped-") {
+                use std::os::windows::process::CommandExt;
+                // New console groups and detached stdio must still belong to
+                // the workload Job, including grandchildren of such helpers.
+                command
+                    .creation_flags(0x0000_0200 | 0x0000_0008)
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null());
+            }
+            let mut child = command.spawn()?;
             let deadline = Instant::now() + Duration::from_secs(3);
             while std::fs::metadata(path).map_or(true, |metadata| metadata.len() == 0) {
                 if Instant::now() >= deadline {
@@ -580,16 +588,24 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             let mut children = std::collections::VecDeque::<std::process::Child>::new();
             let deadline = Instant::now() + Duration::from_secs(15);
             while Instant::now() < deadline {
-                children.push_back(
-                    Command::new(std::env::current_exe()?)
-                        .arg(if args[0] == "racing-escaped-tree" {
-                            "escaped-descendant"
-                        } else {
-                            "descendant"
-                        })
-                        .arg(args.get(1).ok_or("heartbeat path missing")?)
-                        .spawn()?,
-                );
+                let mut command = Command::new(std::env::current_exe()?);
+                command
+                    .arg(if args[0] == "racing-escaped-tree" {
+                        "escaped-descendant"
+                    } else {
+                        "descendant"
+                    })
+                    .arg(args.get(1).ok_or("heartbeat path missing")?);
+                #[cfg(windows)]
+                if args[0] == "racing-escaped-tree" {
+                    use std::os::windows::process::CommandExt;
+                    command
+                        .creation_flags(0x0000_0200 | 0x0000_0008)
+                        .stdin(std::process::Stdio::null())
+                        .stdout(std::process::Stdio::null())
+                        .stderr(std::process::Stdio::null());
+                }
+                children.push_back(command.spawn()?);
                 if children.len() > 16 {
                     let mut child = children.pop_front().ok_or("missing child")?;
                     child.kill()?;

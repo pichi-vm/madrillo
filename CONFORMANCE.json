@@ -103,7 +103,12 @@
       "behavior": "Workload descendants",
       "criterion": "Force stop, leader exit, and timeout clean the supported workload scope; fork races and grandchildren are tested on every host. Linux/Windows cover changed groups and daemonization. macOS covers descendants remaining in the managed workload process group; escape tests demonstrate the documented boundary",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "current-tests",
+        "linux-cgroup-v2",
+        "linux-cgroup-v1",
+        "macos-process-group-boundary"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -599,6 +604,8 @@
         "test close_input_drains_preceding_accepted_bytes ... ok",
         "test detached_timeout_preserves_reason_and_console_lifetime ... ok",
         "test force_stops_grandchildren_and_concurrent_forks ... ok",
+        "test leader_exit_stops_a_descendant_in_the_native_scope ... ok",
+        "test grandchildren_and_fork_races_stay_in_the_native_scope ... ok",
         "test a_full_diagnostic_sink_cannot_block_timeout_or_result_publication ... ok",
         "test stalled_viewer_does_not_block_force_or_logging ... ok",
         "test raw_logs_rotate_on_exact_byte_limits_and_keep_no_cri_prefix ... ok",
@@ -1264,6 +1271,28 @@
         "native placement: terminal=false, early leader/helper membership and outside exit helper passed",
         "native placement: terminal=true, early leader/helper membership and outside exit helper passed",
         "test native_placement_precedes_workload_and_helpers ... ok"
+      ]
+    },
+    {
+      "id": "macos-process-group-boundary",
+      "hosts": [
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "core",
+        "escaped_session_is_outside_the_documented_macos_scope",
+        "--",
+        "--exact"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "test escaped_session_is_outside_the_documented_macos_scope ... ok"
       ]
     },
     {
