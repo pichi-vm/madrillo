@@ -82,9 +82,19 @@ missing completion stays unknown, and an exit callback is never inferred from
 a retained workload result. Filesystem durability limits and passthrough I/O
 ownership remain documented in [README](../../README.md).
 
-Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) and Dillo
-[PR #92](https://github.com/pichi-vm/dillo/pull/92) provide the integration changes.
-They remain separate from merging and deployment decisions. Dillo's console-loss
-shutdown is its default, and its helpers follow the approved process-group
-contract. The three sequential plan reviews and twelve earlier simplification
-passes remain recorded with their historical scope clearly identified.
+Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) contains the caller
+integration and retains its qualified Dillo dependency `88d507c`. The original
+Dillo [PR #92](https://github.com/pichi-vm/dillo/pull/92) has since been closed
+in favor of [#101](https://github.com/pichi-vm/dillo/pull/101) (input),
+[#102](https://github.com/pichi-vm/dillo/pull/102) (resize), and
+[#103](https://github.com/pichi-vm/dillo/pull/103) (input-owner lifetime).
+Those replacement PRs have their own CI and are not the source pins validated
+by this Madrillo run. At handoff, their Windows boot suite reports a missing
+early-input acknowledgement in `console_input_reaches_guest`; console-loss and
+resize tests pass in the [same job](https://github.com/pichi-vm/dillo/actions/runs/42238940631/job/127963842967).
+No VM workflow was dispatched to investigate or retry that separate result.
+
+Dillo's console-loss shutdown remains its default, and helpers follow the
+approved process-group contract. The three sequential plan reviews and twelve
+earlier simplification passes remain recorded with their historical scope
+clearly identified. Integration review and merge decisions remain separate.

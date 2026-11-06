@@ -26,11 +26,15 @@ OS boundary. Native exact inheritance, Job/ConPTY composition, scope cleanup and
 terminal control pass. The approved macOS process-group contract remains in force:
 workloads keep helpers in the managed group and own any deliberate escape.
 
-Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) and Dillo
-[PR #92](https://github.com/pichi-vm/dillo/pull/92) contain the integration changes.
-Pichi incorporates current main and remains mergeable. Dillo's console-loss
-shutdown is its default. Existing Pichi/Dillo repository CI is separate from
-Madrillo's completed public-runner gate. No integration PR has been merged.
+Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) incorporates current
+main and remains mergeable, with qualified Dillo pin `88d507c`. Dillo PR #92 has
+been closed in favor of [#101](https://github.com/pichi-vm/dillo/pull/101),
+[#102](https://github.com/pichi-vm/dillo/pull/102) and
+[#103](https://github.com/pichi-vm/dillo/pull/103). Their separate Windows boot
+suite currently fails the early-input acknowledgement case; the console-loss
+and resize cases pass. These replacement heads were not substituted for the
+qualified pins. See the completion review for the failure link. No VM workflow
+was dispatched or retried, and no integration PR has been merged.
 
 [Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
 API request drafts were never sent. The remaining actions are the user's normal
