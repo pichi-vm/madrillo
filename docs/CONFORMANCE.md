@@ -60,6 +60,16 @@ the requirement remains pending until its complete native review finishes.
 Linux fixtures need 128 free 2 MiB hugepages for their 256 MiB guests. This focused
 workflow does not replace the full VM suite.
 
+`tools/check_pichi.py MONITOR PICHI_CHECKOUT` runs the caller unit/CLI cases and
+explicit native launch and monitor-crash fixtures. On Windows it invokes the
+existing native test host outside the runner's restrictive Job, including actual
+caller console-window closure. The command requires positive execution markers
+for unknown-state retention, idempotent storage cleanup, image pins and native
+crash reconciliation. It is shared by focused CI and the C28 case mappings; VM
+and locked build qualification remain separate requirements. Madrillo's native
+control tests additionally kill the monitor before publication and between
+publication and a delayed exit callback, checking retained evidence in each case.
+
 ## Reviewed native launch and reconnection coverage
 
 C02 is ready to execute on all three native hosts. The required positive markers

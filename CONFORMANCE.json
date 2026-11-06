@@ -438,7 +438,11 @@
       "behavior": "Crash reconciliation",
       "criterion": "Missing results remain unknown; engine cleanup is idempotent; monitor death cannot claim a callback ran",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "current-tests",
+        "native-pichi-caller-unix",
+        "native-pichi-caller-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -597,7 +601,8 @@
         "test response_is_framed_and_oversize_never_emits_a_prefix ... ok",
         "test thresholds_preserve_workload_logs_and_aliases ... ok",
         "test fatal_errors_survive_threshold_and_invalid_levels_launch_nothing ... ok",
-        "test failed_result_publication_preserves_collision_and_skips_callback ... ok"
+        "test failed_result_publication_preserves_collision_and_skips_callback ... ok",
+        "test monitor_crash_does_not_promise_an_exit_callback ... ok"
       ]
     },
     {
@@ -1197,12 +1202,49 @@
         "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
         "native Dillo console lifetime: three real VM cases passed"
       ]
+    },
+    {
+      "id": "native-pichi-caller-unix",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_pichi.py",
+        "target/debug/madrillo",
+        ".qualification/components/pichi"
+      ],
+      "timeout": 1800,
+      "success_markers": [
+        "native monitor crash: unknown state and cleanup inputs retained",
+        "native Pichi caller and crash reconciliation passed"
+      ]
+    },
+    {
+      "id": "native-pichi-caller-windows",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_pichi.py",
+        "target/debug/madrillo.exe",
+        ".qualification/components/pichi"
+      ],
+      "timeout": 1800,
+      "success_markers": [
+        "native monitor crash: unknown state and cleanup inputs retained",
+        "native Pichi caller and crash reconciliation passed"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "0f5c2cce30684bb1e644c795c5f4cb667ccba023"
+      "revision": "5ee1d20d96c9c1d050a068f899b1e1f520d4fa5e"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

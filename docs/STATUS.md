@@ -27,11 +27,20 @@ binary input/reconnection. Guest resize and full
 Pichi/Dillo/build qualification remain unfinished. The focused Dillo VM workflow
 tests current monitor sources without requeueing Dillo's entire repository suite.
 
-Pichi `0f5c2cce` now integrates current image requirements and retains writable
-storage through monitor ownership. Linux caller tests cover detach, duplicate-use
-rejection, independent exit-callback cleanup, and preservation when completion is
-missing or incomplete. Native macOS/Windows validation of this merged source is
-pending. The PR is mergeable again; no PR has been merged.
+Pichi `0f5c2cce` integrates current image requirements and retains writable
+storage through monitor ownership. [Native caller qualification passes on all
+three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42177485909), covering
+detach, duplicate-use rejection, independent exit-callback cleanup, preservation
+when completion is missing or incomplete, and real Windows caller-window closure.
+The PR is mergeable again; no PR has been merged.
+
+Pichi `5ee1d20d` adds actual monitor-crash reconciliation: repeated wait, stop,
+attach and cleanup preserve unknown state, image pins, storage and partial build
+output. Madrillo also tests crashes before result publication and after publication
+but before a delayed exit callback. The latter retains the workload result without
+claiming that the callback ran. Local native tests pass; native CI is pending.
+The shared caller qualification command now has C28 case mappings, which remain
+pending until the cross-platform review finishes.
 
 Dillo `6086bf1` passes Linux and Windows VM CI, including sustained unread guest
 input before monitor death and observed cooperative zero exit:

@@ -79,14 +79,6 @@ jobs:
       - name: Pichi formatting
         working-directory: pichi
         run: cargo +nightly-2026-07-06 fmt --all -- --check
-      - name: Caller unit and CLI qualification
-        if: runner.os != 'Windows'
-        working-directory: pichi
-        run: cargo +nightly-2026-07-06 test --locked -p pichi --lib --test cmd_workload --test cmd_build --test cmd_run --test cmd_rmi
-      - name: Native initial channel and reconnect
-        if: runner.os != 'Windows'
-        working-directory: pichi
-        run: cargo +nightly-2026-07-06 test --locked -p pichi --lib native_monitor_launch_and_async_control -- --ignored --nocapture
       - name: Windows denied breakaway retains unknown workload state
         if: runner.os == 'Windows'
         working-directory: pichi
@@ -94,10 +86,8 @@ jobs:
           cargo +nightly-2026-07-06 test --locked -p pichi --lib denied_job_breakaway_keeps_workload_unknown -- --list |
             tr -d '\r' | grep -Fx 'cmd::workload::tests::denied_job_breakaway_keeps_workload_unknown: test'
           cargo +nightly-2026-07-06 test --locked -p pichi --lib denied_job_breakaway_keeps_workload_unknown -- --ignored --nocapture
-      - name: Qualify Windows caller outside the runner Job
-        if: runner.os == 'Windows'
-        shell: pwsh
+      - name: Native caller and crash reconciliation
         working-directory: monitor
-        run: ./tools/check_windows_caller.ps1
+        run: python3 tools/check_pichi.py "$MADRILLO_BIN" ../pichi
       - name: Scope of this evidence
         run: echo 'Caller qualification only. This is not a complete VM/platform or C01-C30 conformance pass.'

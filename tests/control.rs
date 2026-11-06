@@ -879,6 +879,84 @@ fn malformed_client_does_not_stop_monitor_or_other_clients()
 }
 
 #[test]
+fn monitor_crash_does_not_promise_an_exit_callback() -> Result<(), Box<dyn std::error::Error>> {
+    for completed in [false, true] {
+        let root = tempfile::tempdir()?;
+        let marker = root.path().join("callback");
+        let (mut monitor, mut client) = Monitor::initial_with_flags(
+            "echo",
+            false,
+            &[
+                "--stdin",
+                "--exit-delay",
+                "30",
+                "--exit-command",
+                env!("CARGO_BIN_EXE_madrillo-fixture"),
+                "--exit-command-arg",
+                "touch",
+                "--exit-command-arg",
+                marker.to_str().ok_or("test path is not UTF-8")?,
+            ],
+        )?;
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+        let payload = b"before crash\0\xff\n";
+        client.send(ClientMessage::Input {
+            bytes: payload.to_vec(),
+        })?;
+        assert!(matches!(client.next()?, ServerMessage::Output { bytes, .. } if bytes == payload));
+        let published = if completed {
+            client.send(ClientMessage::CloseInput)?;
+            let ServerMessage::Completed { result } = client.next()? else {
+                return Err("missing completion before delayed callback".into());
+            };
+            assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 0 });
+            Some(result)
+        } else {
+            None
+        };
+        // The owned monitor handle cannot identify a reused process. An unfinished
+        // echo workload exits on console EOF. A finished workload's result must
+        // survive even if the monitor dies before invoking the delayed callback.
+        monitor.child.kill()?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            if let Some(status) = monitor.child.try_wait()? {
+                assert!(!status.success());
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err("monitor crash deadline".into());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let error = client
+            .next()
+            .err()
+            .ok_or("monitor crash acknowledged completion")?;
+        assert!(
+            error.to_string() == "control EOF before expected response"
+                || error.downcast_ref::<io::Error>().is_some_and(|error| {
+                    matches!(
+                        error.kind(),
+                        io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+                    )
+                }),
+            "unexpected crash channel error: {error}"
+        );
+        let path = monitor._root.path().join("state/result.json");
+        if let Some(published) = published {
+            let retained: madrillo::Completion = serde_json::from_slice(&std::fs::read(path)?)?;
+            assert_eq!(retained, published);
+        } else {
+            assert!(!path.exists());
+        }
+        assert!(!marker.exists(), "monitor crash invoked its exit callback");
+    }
+    Ok(())
+}
+
+#[test]
 fn failed_result_publication_preserves_collision_and_skips_callback()
 -> Result<(), Box<dyn std::error::Error>> {
     for directory in [false, true] {

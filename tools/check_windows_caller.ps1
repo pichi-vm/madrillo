@@ -1,7 +1,7 @@
 # Native caller qualification outside the runner's restrictive Job Object.
 # WMI is test infrastructure only; the product still uses native inherited
 # control and CREATE_BREAKAWAY_FROM_JOB, without a fallback or launch broker.
-param([string]$Request)
+param([string]$Request, [string]$PichiDirectory = '../pichi')
 $ErrorActionPreference = 'Stop'
 
 if ($Request) {
@@ -38,14 +38,14 @@ if ($Request) {
     exit $code
 }
 
-$root = Join-Path $env:RUNNER_TEMP ('madrillo-caller-' + [guid]::NewGuid())
+$root = Join-Path ([IO.Path]::GetTempPath()) ('madrillo-caller-' + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $root | Out-Null
 $worker = $null
 try {
     $environment = @{}
     # Explicit non-secret build/test environment; no credential snapshot.
     foreach ($name in @('PATH', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'TEMP', 'TMP',
-                        'CARGO_HOME', 'RUSTUP_HOME', 'CARGO_NET_GIT_FETCH_WITH_CLI',
+                        'CARGO_HOME', 'CARGO_TARGET_DIR', 'RUSTUP_HOME', 'CARGO_NET_GIT_FETCH_WITH_CLI',
                         'PICHI_MADRILLO', 'MADRILLO_BIN', 'CI', 'GITHUB_ACTIONS',
                         'RUNNER_TRACKING_ID')) {
         $value = [Environment]::GetEnvironmentVariable($name)
@@ -54,7 +54,7 @@ try {
     $requestFile = Join-Path $root 'request.json'
     $resultFile = Join-Path $root 'exit.txt'
     $logFile = Join-Path $root 'caller.log'
-    $directory = (Resolve-Path '../pichi').Path
+    $directory = (Resolve-Path -LiteralPath $PichiDirectory).Path
     $buildLog = Join-Path $root 'build.log'
     Push-Location -LiteralPath $directory
     try {
@@ -76,6 +76,11 @@ try {
         executable = $unit[0].executable
         arguments = @('native_monitor_launch_and_async_control', '--ignored', '--nocapture')
         required = 'cmd::workload::tests::native_monitor_launch_and_async_control'
+    }
+    $tests += @{
+        executable = $unit[0].executable
+        arguments = @('cmd::workload::tests::monitor_crash_preserves_unknown_state_and_cleanup_inputs', '--exact', '--ignored', '--nocapture')
+        required = 'cmd::workload::tests::monitor_crash_preserves_unknown_state_and_cleanup_inputs'
     }
     $tests += @{
         executable = $unit[0].executable
