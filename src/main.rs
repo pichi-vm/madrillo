@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 mod activation;
 #[cfg(target_os = "linux")]
 mod cgroup;
@@ -19,6 +19,9 @@ mod security;
 mod state;
 mod terminal;
 mod transport;
+#[cfg(windows)]
+#[allow(unsafe_code, reason = "User-approved, audited Windows OS boundary")]
+mod windows;
 use clap::Parser;
 use connections::Connections;
 use diagnostics::{Diagnostics, Level};
@@ -217,10 +220,6 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
     }
     // Adopt before opening state, endpoints, logs or any worker resources.
     let capture_specs = logging::extra::Spec::parse(&cli.capture)?;
-    #[cfg(windows)]
-    if !cli.inherit.is_empty() {
-        return Err("exact extra-handle inheritance is not yet supported on Windows".into());
-    }
     let activation = activation::Activation::discover(cli.replace_listen_pid)?;
     let mut inherited_numbers = cli.inherit.clone();
     if let Some(activation) = &activation {
@@ -275,6 +274,14 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
             })
         })
         .collect::<io::Result<Vec<_>>>()?;
+    #[cfg(windows)]
+    let inherited = inherited_numbers
+        .iter()
+        .map(|number| {
+            held.remove(number)
+                .ok_or_else(|| io::Error::other("inherited resource disappeared"))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let mut state = State::create(directory)?;
     #[cfg(unix)]
@@ -322,7 +329,6 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
         diagnostics,
         #[cfg(unix)]
         original_oom_score,
-        #[cfg(unix)]
         inherited,
     );
     if let Err(error) = &supervised {
@@ -452,6 +458,7 @@ fn supervise(
     diagnostics: &mut Diagnostics,
     #[cfg(unix)] original_oom_score: Option<i32>,
     #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
+    #[cfg(windows)] inherited: Vec<filedescriptor::FileDescriptor>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(unix)]
     let mut signals = signal_hook::iterator::Signals::new([
@@ -579,6 +586,8 @@ fn supervise(
     if let Some(notify) = &notify {
         notify.configure(&mut command);
     }
+    #[cfg(windows)]
+    let mut child_stdin = None;
     let mut input = if let Some(terminal) = &terminal {
         #[cfg(unix)]
         {
@@ -597,10 +606,15 @@ fn supervise(
         Input::disabled()
     } else {
         let (input, stdin) = Input::pipe()?;
+        #[cfg(unix)]
         command
             .stdin(stdin)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
+        #[cfg(windows)]
+        {
+            child_stdin = Some(stdin);
+        }
         input
     };
     connections.send(
@@ -639,8 +653,11 @@ fn supervise(
         terminal.as_mut(),
         #[cfg(target_os = "linux")]
         group,
-        #[cfg(unix)]
         inherited,
+        #[cfg(windows)]
+        child_stdin,
+        #[cfg(windows)]
+        passthrough,
     )?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();

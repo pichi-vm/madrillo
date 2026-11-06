@@ -342,13 +342,11 @@ fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn
                 },
                 "{mode}: {result:?}"
             );
-            if !cfg!(windows) || !terminal {
-                assert_eq!(
-                    result.cleanup,
-                    madrillo::CleanupResult::Complete,
-                    "{mode}: {result:?}"
-                );
-            }
+            assert_eq!(
+                result.cleanup,
+                madrillo::CleanupResult::Complete,
+                "{mode}: {result:?}"
+            );
             let before = fs::read(&heartbeat)?;
             assert!(!before.is_empty(), "{mode} did not start its descendants");
             std::thread::sleep(Duration::from_millis(150));
@@ -509,6 +507,11 @@ fn terminal_leader_exit_terminates_descendants() -> Result<(), Box<dyn std::erro
         &[heartbeat.as_os_str()],
     )?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
+    assert_eq!(
+        result.cleanup,
+        madrillo::CleanupResult::Complete,
+        "{result:?}"
+    );
     assert!(result.log_errors.is_empty(), "{:?}", result.log_errors);
     let before = fs::read(&heartbeat)?;
     assert!(!before.is_empty());

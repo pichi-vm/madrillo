@@ -54,6 +54,7 @@ fn inherited(number: usize) -> io::Result<Inherited> {
 /// Duplicate and validate the complete transfer before opening other resources.
 /// A new duplicate must not accidentally make a later invalid number valid.
 /// Original transfers close only after all checked duplicates exist.
+#[cfg(unix)]
 pub(crate) fn adopt(numbers: &[usize]) -> io::Result<BTreeMap<usize, FileDescriptor>> {
     if numbers.len() > 64 {
         return Err(io::Error::other(
@@ -88,6 +89,36 @@ pub(crate) fn adopt(numbers: &[usize]) -> io::Result<BTreeMap<usize, FileDescrip
             .map(|resource| resource.as_raw_file_descriptor())
             .collect::<Vec<_>>(),
     )?;
+    Ok(owned)
+}
+
+#[cfg(windows)]
+pub(crate) fn adopt(numbers: &[usize]) -> io::Result<BTreeMap<usize, FileDescriptor>> {
+    if numbers.len() > 64 {
+        return Err(io::Error::other(
+            "at most 64 inherited resources are supported",
+        ));
+    }
+    if numbers.iter().copied().collect::<BTreeSet<_>>().len() != numbers.len() {
+        return Err(io::Error::other("each resource must have exactly one role"));
+    }
+    // Validate the whole transfer without allocating any native handles. The
+    // original numeric identities must remain available for exact inheritance.
+    let originals = numbers
+        .iter()
+        .map(|number| {
+            let original = inherited(*number)?;
+            crate::windows::validate_inherited(*number)?;
+            Ok((*number, original))
+        })
+        .collect::<io::Result<Vec<_>>>()?;
+    let owned = originals
+        .into_iter()
+        .map(|(number, original)| (number, FileDescriptor::new(original)))
+        .collect::<BTreeMap<_, _>>();
+    for resource in owned.values() {
+        crate::windows::clear_inheritance(resource)?;
+    }
     Ok(owned)
 }
 

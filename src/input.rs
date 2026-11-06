@@ -1,7 +1,10 @@
-use std::{
-    io::{self, Write},
-    process::Stdio,
-};
+#[cfg(unix)]
+use std::process::Stdio;
+#[cfg(unix)]
+type ChildInput = Stdio;
+#[cfg(windows)]
+type ChildInput = std::fs::File;
+use std::io::{self, Write};
 
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 
@@ -26,9 +29,7 @@ impl Input {
         }
     }
     #[cfg(windows)]
-    pub(crate) fn terminal_windows(
-        mut writer: conpty_oxide::blocking::OwnedWriteHalf,
-    ) -> io::Result<Self> {
+    pub(crate) fn terminal_windows(mut writer: std::fs::File) -> io::Result<Self> {
         use std::sync::mpsc;
         let (send, receive) = mpsc::sync_channel::<Vec<u8>>(8);
         let (failed, errors) = mpsc::sync_channel(1);
@@ -57,7 +58,7 @@ impl Input {
             closing: false,
         }
     }
-    pub(crate) fn pipe() -> io::Result<(Self, Stdio)> {
+    pub(crate) fn pipe() -> io::Result<(Self, ChildInput)> {
         #[cfg(unix)]
         let (writer, input) = {
             use nix::fcntl::{FcntlArg, OFlag, fcntl};
@@ -84,7 +85,7 @@ impl Input {
             let writer = WindowsWriter {
                 pipe: listener.accept()?,
             };
-            (WindowsInput::Pipe(writer), Stdio::from(reader))
+            (WindowsInput::Pipe(writer), reader)
         };
         Ok((
             Self {

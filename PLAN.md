@@ -16,9 +16,14 @@ madrillo contains no VM, guest-execution, image-management, or pichi policy.
 Use one package with a bare types-only library and a complete executable.
 The library contains shared protocol/result types and serialization derives
 only. Default features are empty; executable dependencies require `cli`.
-Every owned Rust target uses `#![forbid(unsafe_code)]`. No local unsafe shim,
-FFI helper executable, C monitor, or subprocess shell implementation substitutes
-for native Rust. Sound dependency APIs may have internal unsafe code.
+The shared library and qualification targets use `#![forbid(unsafe_code)]`.
+On 2026-11-06 the user approved a narrow exception for Windows process creation,
+inherited-handle ownership, ConPTY lifetime, and Job accounting. The executable
+uses `#![deny(unsafe_code)]` with a single private `windows` module allowed to
+contain audited native calls and ownership conversions. Every unsafe operation
+must document its safety invariants; callers receive safe ownership-based APIs.
+No FFI helper executable, C monitor, or subprocess shell implementation
+substitutes for native Rust. Sound dependency APIs may have internal unsafe code.
 Operational failures use errors, never production panic/unwrap/expect paths.
 
 The source baseline is C conmon `46837cd4800889521b6eccd4cce75a69249b1702`,
@@ -36,7 +41,7 @@ behavior, ignored test, absent runner, or unimplemented path is not a pass.
 
 | ID | Required behavior | Success criterion |
 | --- | --- | --- |
-| C01 | Bare library and safe owned code | Default dependency tree has no process/transport/CLI/logging runtime; every target forbids unsafe; production panic audit is clean |
+| C01 | Bare library and scoped native safety | Default dependency tree has no process/transport/CLI/logging runtime; library and qualification targets forbid unsafe; executable denies unsafe except its single audited private Windows OS-boundary module; production panic audit is clean |
 | C02 | Native launch | Preserve native argv/env/cwd including non-ASCII and native non-Unicode values; typed spawn errors; no shell interpolation |
 | C03 | Startup and first output | Prepare endpoint/logs/scope before authorized execution; immediate output/exit retained; gated pre-Start EOF launches nothing |
 | C04 | Independent lifetime | In captured pipe/terminal modes, workload survives foreground/detached client exit, crash, and terminal disconnect; monitor independent of caller session/job; passthrough documents its external I/O owner |

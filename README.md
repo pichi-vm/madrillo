@@ -8,7 +8,10 @@ conformance passes. No feature completeness or native-platform conformance is
 claimed yet.
 
 Madrillo is one Rust package: a minimal shared-types library and a complete
-monitor executable. All owned Rust targets forbid unsafe code. Pichi and dillo
+monitor executable. The library and qualification targets forbid unsafe code.
+The executable denies unsafe code except for its private, audited Windows
+OS boundary, approved to compose exact handle inheritance, Jobs and ConPTY.
+See the [boundary review](docs/reviews/04-windows-boundary.md). Pichi and dillo
 are the first integration, while the monitor remains independent of VM APIs.
 
 On Linux, Madrillo becomes a subreaper before launching the workload. After
@@ -55,13 +58,14 @@ conmon process-group contract.
 `--capture NAME RESOURCE` transfers an inherited pipe read end to the monitor.
 It records raw bytes in `STATE/stream-NAME.log`; clients can select `NAME` in
 their attachment. The caller separately passes the write end to the workload
-(Unix `--inherit NUMBER`) using the workload's own arguments. No contents or
+(`--inherit NUMBER`) using the workload's own arguments. No contents or
 arguments are interpreted. Captures are explicit additional logs even with
 `--log-path none`; size/rotation/sync and allowlist options apply to them too.
 Their byte limits are exact; stdout/stderr retain conmon's whole-record CRI
 behavior. Capture resources count toward the 64-resource bound and must have
-exclusive read ownership. Windows currently accepts synchronous pipe read
-handles; exact workload inheritance on Windows remains unfinished.
+exclusive read ownership. Windows accepts synchronous pipe read handles.
+Explicit inheritance preserves the numeric handle through native process
+creation, including ConPTY workloads. Monitor-only resources are excluded.
 
 On Windows, the state directory's existing parent must grant private,
 inheritable access to the invoking user (SYSTEM/Administrators are also

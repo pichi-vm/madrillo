@@ -689,13 +689,11 @@ fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::e
                     | ServerMessage::Output { .. } => {}
                     ServerMessage::Completed { result } => {
                         assert_eq!(result.cause, CompletionCause::Forced, "{result:?}");
-                        if !cfg!(windows) || !terminal {
-                            assert_eq!(
-                                result.cleanup,
-                                madrillo::CleanupResult::Complete,
-                                "{result:?}"
-                            );
-                        }
+                        assert_eq!(
+                            result.cleanup,
+                            madrillo::CleanupResult::Complete,
+                            "{result:?}"
+                        );
                         break;
                     }
                     response => {

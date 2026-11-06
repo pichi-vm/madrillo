@@ -141,6 +141,43 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             pipe.write_all(b"opaque\0\xff")?;
             Ok(37)
         }
+        #[cfg(windows)]
+        Some("inherited-probe") => {
+            use std::io::{Seek, SeekFrom};
+            use std::os::windows::io::{AsRawHandle, RawHandle};
+            struct Inherited(RawHandle);
+            impl AsRawHandle for Inherited {
+                fn as_raw_handle(&self) -> RawHandle {
+                    self.0
+                }
+            }
+            let number: usize = args
+                .get(1)
+                .ok_or("handle missing")?
+                .to_str()
+                .ok_or("invalid handle")?
+                .parse()?;
+            if let Some(hidden) = args.get(2) {
+                let hidden: usize = hidden.to_str().ok_or("invalid hidden handle")?.parse()?;
+                if let Ok(resource) =
+                    filedescriptor::FileDescriptor::dup(&Inherited(hidden as RawHandle))
+                {
+                    let mut file = resource.as_file()?;
+                    // A numeric slot may be reused for a different child object.
+                    // Check the actual file contents, not numeric validity alone.
+                    if file.seek(SeekFrom::Start(0)).is_ok() {
+                        let mut bytes = Vec::new();
+                        file.take(64).read_to_end(&mut bytes)?;
+                        if bytes == b"monitor-only resource" {
+                            return Err("unlisted handle leaked into workload".into());
+                        }
+                    }
+                }
+            }
+            let mut pipe = filedescriptor::FileDescriptor::dup(&Inherited(number as RawHandle))?;
+            pipe.write_all(b"opaque\0\xff")?;
+            Ok(37)
+        }
         #[cfg(target_os = "linux")]
         Some("activation-probe") => {
             use std::os::fd::{AsRawFd, OwnedFd};

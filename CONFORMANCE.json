@@ -5,8 +5,8 @@
   "requirements": [
     {
       "id": "C01",
-      "behavior": "Bare library and safe owned code",
-      "criterion": "Default dependency tree has no process/transport/CLI/logging runtime; every target forbids unsafe; production panic audit is clean",
+      "behavior": "Bare library and scoped native safety",
+      "criterion": "Default dependency tree has no process/transport/CLI/logging runtime; library and qualification targets forbid unsafe; executable denies unsafe except its single audited private Windows OS-boundary module; production panic audit is clean",
       "status": "ready",
       "tests": [
         "bare-library",
@@ -156,7 +156,8 @@
       "criterion": "Safe adoption, exact inheritance, capture/pass/hold roles, no leaked writer copies, no argument rewriting or child-API proxy",
       "status": "pending",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "native-windows-inheritance"
       ],
       "evidence": [],
       "hosts": [
@@ -645,7 +646,7 @@
       ],
       "timeout": 120,
       "success_markers": [
-        "bare library audit: serde-only normal/build graph; empty defaults; every owned target forbids unsafe"
+        "bare library audit: serde-only normal/build graph; empty defaults; sole private Windows unsafe boundary"
       ]
     },
     {
@@ -1361,6 +1362,30 @@
         "native VM suite passed: pichi_build_checks_committed_submodule_stores",
         "native VM suite passed: staged_images_create_extend_and_compose",
         "native Pichi VM/build: three real build-and-boot suites passed"
+      ]
+    },
+    {
+      "id": "native-windows-inheritance",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--bin",
+        "madrillo",
+        "windows::tests::exact_handles_compose_with_pipe_and_conpty_and_release_before_hook",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "exact Windows inheritance: terminal=false, opaque bytes, excluded handle and EOF before hook passed",
+        "exact Windows inheritance: terminal=true, opaque bytes, excluded handle and EOF before hook passed"
       ]
     }
   ],

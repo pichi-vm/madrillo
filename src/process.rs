@@ -1,8 +1,11 @@
 use madrillo::{CleanupResult, LeaderResult, OomEvidence};
-use std::{
-    io,
-    process::{ChildStderr, ChildStdout, Command, ExitStatus},
-};
+#[cfg(windows)]
+use std::fs::File as ChildStderr;
+#[cfg(windows)]
+use std::fs::File as ChildStdout;
+#[cfg(unix)]
+use std::process::{ChildStderr, ChildStdout, ExitStatus};
+use std::{io, process::Command};
 
 pub(crate) struct Workload {
     observed: Option<LeaderResult>,
@@ -12,7 +15,7 @@ pub(crate) struct Workload {
     #[cfg(unix)]
     child: std::process::Child,
     #[cfg(windows)]
-    child: WindowsChild,
+    child: crate::windows::Child,
 }
 
 impl Workload {
@@ -23,10 +26,7 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            match &self.child {
-                WindowsChild::Pipe(child) => child.id(),
-                WindowsChild::Terminal(child) => child.id(),
-            }
+            self.child.id()
         }
     }
     pub(crate) fn spawn(
@@ -34,6 +34,9 @@ impl Workload {
         terminal: Option<&mut crate::terminal::Terminal>,
         #[cfg(target_os = "linux")] group: Option<crate::cgroup::Cgroup>,
         #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
+        #[cfg(windows)] inherited: Vec<filedescriptor::FileDescriptor>,
+        #[cfg(windows)] stdin: Option<std::fs::File>,
+        #[cfg(windows)] passthrough: bool,
     ) -> io::Result<Self> {
         #[cfg(unix)]
         {
@@ -59,12 +62,8 @@ impl Workload {
 
         #[cfg(windows)]
         {
-            let child = if let Some(terminal) = terminal {
-                WindowsChild::Terminal(terminal.spawn(command)?)
-            } else {
-                use process_wrap::std::{CommandWrap, JobObject};
-                WindowsChild::Pipe(CommandWrap::from(command).wrap(JobObject).spawn()?)
-            };
+            let child =
+                crate::windows::Child::spawn(&command, terminal, inherited, stdin, passthrough)?;
             Ok(Self {
                 child,
                 observed: None,
@@ -79,10 +78,7 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            match &mut self.child {
-                WindowsChild::Pipe(child) => child.stdout().take(),
-                WindowsChild::Terminal(_) => None,
-            }
+            self.child.stdout.take()
         }
     }
     pub(crate) fn stderr(&mut self) -> Option<ChildStderr> {
@@ -92,10 +88,7 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            match &mut self.child {
-                WindowsChild::Pipe(child) => child.stderr().take(),
-                WindowsChild::Terminal(_) => None,
-            }
+            self.child.stderr.take()
         }
     }
     pub(crate) fn exited(&mut self) -> io::Result<bool> {
@@ -173,18 +166,10 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            self.observed =
-                match &mut self.child {
-                    // process-wrap's outer try_wait consumes Job completion events.
-                    // Poll the leader directly; reserve the Job event for final wait.
-                    WindowsChild::Pipe(child) => child.inner_mut().try_wait()?.map(native_result),
-                    WindowsChild::Terminal(child) => child
-                        .try_wait()
-                        .map_err(io::Error::other)?
-                        .map(|status| LeaderResult::Exit {
-                            code: status.code(),
-                        }),
-                };
+            self.observed = self
+                .child
+                .try_wait()?
+                .map(|code| LeaderResult::Exit { code });
             Ok(self.observed.is_some())
         }
     }
@@ -217,10 +202,7 @@ impl Workload {
         }
         #[cfg(windows)]
         {
-            match &mut self.child {
-                WindowsChild::Pipe(child) => child.start_kill(),
-                WindowsChild::Terminal(child) => child.kill().map_err(io::Error::other),
-            }
+            self.child.kill()
         }
     }
     #[cfg(unix)]
@@ -317,12 +299,8 @@ impl Workload {
         #[cfg(unix)]
         let leader = native_result(self.child.wait()?);
         #[cfg(windows)]
-        let leader = match &mut self.child {
-            // Observe the leader before the outer wrapper waits for the Job.
-            WindowsChild::Pipe(child) => native_result(child.inner_mut().wait()?),
-            WindowsChild::Terminal(child) => LeaderResult::Exit {
-                code: child.wait().map_err(io::Error::other)?.code(),
-            },
+        let leader = LeaderResult::Exit {
+            code: self.child.wait()?,
         };
         if self.exited_at_unix_ms == 0 {
             self.exited_at_unix_ms = crate::unix_ms();
@@ -333,14 +311,8 @@ impl Workload {
     fn cleanup_result(&mut self, errors: Vec<String>) -> CleanupResult {
         let mut errors = errors;
         #[cfg(windows)]
-        if let WindowsChild::Pipe(child) = &mut self.child
-            && let Err(error) = child.wait()
-        {
+        if let Err(error) = self.child.wait_empty() {
             errors.push(format!("wait for workload Job: {error}"));
-        }
-        #[cfg(windows)]
-        if matches!(self.child, WindowsChild::Terminal(_)) {
-            errors.push("ConPTY job termination was requested, but the dependency does not expose a job-empty observation".into());
         }
         #[cfg(target_os = "linux")]
         if let Err(error) = reap_descendants() {
@@ -421,6 +393,7 @@ fn wait_group_empty(leader: u32) -> io::Result<()> {
     }
 }
 
+#[cfg(unix)]
 fn native_result(status: ExitStatus) -> LeaderResult {
     #[cfg(unix)]
     {
@@ -526,10 +499,4 @@ fn terminate_adopted_children() -> io::Result<()> {
         }
     }
     Ok(())
-}
-
-#[cfg(windows)]
-enum WindowsChild {
-    Pipe(Box<dyn process_wrap::std::ChildWrapper>),
-    Terminal(conpty_oxide::blocking::Child),
 }
