@@ -123,7 +123,12 @@ impl Monitor {
             command.arg("--start-gated");
         }
         command.arg("--").args(workload);
-        let child = command.spawn()?;
+        // Model a detached caller's new process group, which initially disables
+        // Ctrl-C. Madrillo must restore it for the independent ConPTY workload.
+        let child = command.spawn_with(
+            windows_spawn::SpawnOptions::new()
+                .creation_flags(windows_spawn::CreationFlags::NEW_PROCESS_GROUP),
+        )?;
         drop(command);
         drop(initial);
         parent.set_nonblocking(true)?;

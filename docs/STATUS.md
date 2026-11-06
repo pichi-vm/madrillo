@@ -6,6 +6,13 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 permits full native execution, including the still-unverified current VM/build
 integration. Readiness is not a full conformance pass.
 
+Full conformance exposed inherited Windows Ctrl-C suppression under its Bash
+launcher: the foreground program ignored terminal interrupts. The native
+boundary now clears that inherited setting before ConPTY creation, following
+Windows Terminal's precedent. The shell regression explicitly starts the
+monitor in a new process group and also runs under a redirected launcher.
+Native verification of this correction is pending; no full round is counted.
+
 The user approved the narrow Windows unsafe-code exception on November 6.
 The shared library and qualification targets still forbid unsafe code. The
 executable denies it except for one private, reviewed Windows OS-boundary

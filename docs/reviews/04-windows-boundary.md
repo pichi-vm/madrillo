@@ -36,6 +36,17 @@ drain. Constructor failures close the pipe endpoints before synchronous close;
 no workload exists on that path. No raw handle is shared using an unsafe Send
 implementation. See Microsoft's [ConPTY lifecycle](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session).
 
+Before console creation, `SetConsoleCtrlHandler(NULL, FALSE)` clears inherited
+Ctrl-C suppression. This flag otherwise propagates from a new-process-group
+launcher through Madrillo into the independent ConPTY workload. The call has
+no pointer or callback lifetime. The detached monitor still uses authenticated
+control for cancellation. This follows [Windows Terminal's correction](https://github.com/microsoft/terminal/pull/5472)
+and the [documented inheritance contract](https://learn.microsoft.com/en-us/windows/console/setconsolectrlhandler).
+The native shell fixture starts its monitor in a new process group and must
+interrupt a foreground program after detach/reattach, then preserve shell exit
+37. Qualification also runs it through Bash and redirected Python, the launcher
+environment that exposed the defect.
+
 Native text remains UTF-16, including unpaired surrogates. Argument quoting
 uses Windows CRT escaping without shell interpolation; batch scripts require an
 explicit interpreter. Environment keys use Windows ordinal case-insensitive

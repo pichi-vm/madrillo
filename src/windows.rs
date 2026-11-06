@@ -24,7 +24,10 @@ use windows_sys::Win32::{
     },
     Globalization::{CSTR_EQUAL, CSTR_GREATER_THAN, CSTR_LESS_THAN, CompareStringOrdinal},
     System::{
-        Console::{COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole},
+        Console::{
+            COORD, ClosePseudoConsole, CreatePseudoConsole, HPCON, ResizePseudoConsole,
+            SetConsoleCtrlHandler,
+        },
         JobObjects::{
             CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
             JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -129,6 +132,11 @@ pub(crate) struct Terminal {
 impl Terminal {
     pub(crate) fn open(rows: u16, cols: u16) -> io::Result<Self> {
         let size = dimensions(rows, cols)?;
+        // A detached launcher/new process group can inherit Ctrl-C suppression.
+        // ConPTY children inherit that bit too, even in their separate console.
+        // SAFETY: no callback or memory is passed; this resets the monitor's
+        // inheritable attribute before creating its console and workload.
+        checked(unsafe { SetConsoleCtrlHandler(None, 0) })?;
         let (input, writer) = pipe()?;
         let (reader, output) = pipe()?;
         let mut raw = 0;
