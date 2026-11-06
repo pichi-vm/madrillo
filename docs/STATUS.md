@@ -920,3 +920,18 @@ leader, the marker appears before completion, monitor death preserves that
 marker, and a marker-path collision remains an explicit error without replacing
 the existing object. C20 now has reviewed native case mappings ready to execute.
 These results do not increment the full conformance streak; native CI is pending.
+
+Live OOM qualification and native distribution pass on Linux, macOS and Windows
+at `c83b373` in [run 42164508230](https://github.com/pichi-vm/madrillo/actions/runs/42164508230).
+Pichi now pins this monitor and Dillo `9efc73a`, including its appliance gitlink
+and host packaging patch. Its new Windows test closes a kill-on-close caller
+Job and verifies monitor survival, reconnection, binary I/O and complete cleanup;
+it passes in [run 42164310324](https://github.com/pichi-vm/madrillo/actions/runs/42164310324).
+Unix terminal restoration/hangup qualification is being completed separately.
+
+Full conformance now requires clean, independently checked-out Pichi and Dillo
+sources at the manifest's immutable pins, with recursive submodules initialized.
+Their revision/tree identities participate in every native report and the
+three-pass streak. Seven gate tests pass, including dirty/changed component
+rejection, accidental parent-repository fallback, and resetting the streak when
+caller sources change. These are evidence-gate tests, not full conformance runs.

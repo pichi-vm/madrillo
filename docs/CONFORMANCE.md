@@ -30,9 +30,18 @@ a new streak. Three fresh successful aggregates on the same source identity are
 required. Reports and the ledger remain outside tracked implementation sources.
 The manifest's initial `clean_streak` is not accepted as evidence by the runner.
 
+Pichi and Dillo are part of the source identity. `CONFORMANCE.json` pins their
+repositories and immutable revisions; the native runner and aggregator require
+independent checkouts at `.qualification/components/pichi` and
+`.qualification/components/dillo`. Every checkout must be clean, including
+initialized recursive submodules at their pinned revisions. An empty component
+directory cannot fall back to the enclosing Madrillo repository. The reports
+include each component's revision and Git tree. Changing either component
+starts the streak again, even when the monitor itself has not changed.
+
 Remaining harness work includes full failure-injection and native case mappings,
-pinned conmon build/differential artifacts, pichi/dillo source identity and
-integration evidence, and native CI round orchestration. Until those are present,
+pinned conmon build/differential artifacts, pichi/dillo integration evidence,
+and native CI round orchestration. Until those are present,
 the full runner must fail closed while any requirement remains pending.
 
 ## Reviewed native launch and reconnection coverage

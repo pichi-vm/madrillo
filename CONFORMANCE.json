@@ -640,5 +640,15 @@
         "test full_windows_exit_bits_survive_pipe_and_terminal_supervision ... ok"
       ]
     }
-  ]
+  ],
+  "components": {
+    "pichi": {
+      "repository": "https://github.com/pichi-vm/pichi",
+      "revision": "a2489707e6bd7494983265a759ba8fb853aedbc4"
+    },
+    "dillo": {
+      "repository": "https://github.com/pichi-vm/dillo",
+      "revision": "9efc73a51aeabd122674914804db663a94a0bced"
+    }
+  }
 }

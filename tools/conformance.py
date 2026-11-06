@@ -10,6 +10,7 @@ import hashlib
 import json
 from pathlib import Path
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -24,15 +25,38 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def git(*args):
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+def git(*args, directory=None):
+    return subprocess.check_output(["git", *args], cwd=directory or ROOT, text=True).strip()
+
+
+def checkout_identity(directory):
+    if Path(git("rev-parse", "--show-toplevel", directory=directory)).resolve() != directory.resolve():
+        raise ValueError(f"not an independent source checkout: {directory}")
+    # Git normalizes checkout line endings; native builds must use a clean tree.
+    if git("status", "--porcelain", "--untracked-files=normal", directory=directory):
+        raise ValueError(f"full conformance requires a clean source tree: {directory}")
+    submodules = subprocess.check_output(["git", "submodule", "status", "--recursive"],
+                                        cwd=directory, text=True)
+    if any(line and line[0] in "-+U" for line in submodules.splitlines()):
+        raise ValueError(f"submodules must be initialized at their pinned revisions: {directory}")
+    return {"revision": git("rev-parse", "HEAD", directory=directory),
+            "tree": git("rev-parse", "HEAD^{tree}", directory=directory)}
 
 
 def identity():
-    # Git normalizes checkout line endings; native builds must use a clean tree.
-    if git("status", "--porcelain", "--untracked-files=normal"):
-        raise ValueError("full conformance requires a clean source tree")
-    return {"revision": git("rev-parse", "HEAD"), "tree": git("rev-parse", "HEAD^{tree}")}
+    source = checkout_identity(ROOT)
+    components = json.loads((ROOT / "CONFORMANCE.json").read_text()).get("components", {})
+    if set(components) != {"pichi", "dillo"}:
+        raise ValueError("full conformance requires pinned Pichi and Dillo sources")
+    source["components"] = {}
+    for name, pin in components.items():
+        if not re.fullmatch(r"[0-9a-f]{40}", pin.get("revision", "")):
+            raise ValueError(f"{name}: an immutable source revision is required")
+        component = checkout_identity(ROOT / ".qualification/components" / name)
+        if component["revision"] != pin["revision"]:
+            raise ValueError(f"{name}: checkout does not match the reviewed revision")
+        source["components"][name] = component
+    return source
 
 
 def save(path, value):

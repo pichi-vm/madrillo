@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -71,6 +72,12 @@ class EvidenceGate(unittest.TestCase):
         self.source = {"revision": "changed", "tree": "changed"}
         self.assertEqual(self.aggregate("next", self.reports("next")), (0, 1))
 
+    def test_changed_caller_source_starts_a_new_streak(self):
+        self.source["components"] = {"pichi": {"revision": "before", "tree": "before"}}
+        self.assertEqual(self.aggregate("caller-before", self.reports("caller-before")), (0, 1))
+        self.source["components"]["pichi"] = {"revision": "after", "tree": "after"}
+        self.assertEqual(self.aggregate("caller-after", self.reports("caller-after")), (0, 1))
+
     def test_failed_evidence_cannot_be_overridden_by_clean_flag(self):
         for kind in ["hash", "marker", "missing", "status", "invalid-json"]:
             with self.subTest(kind=kind):
@@ -91,6 +98,46 @@ class EvidenceGate(unittest.TestCase):
         self.manifest["requirements"][6]["status"] = "pending"
         (self.root / "CONFORMANCE.json").write_text(json.dumps(self.manifest))
         self.assertEqual(self.aggregate("pending", self.reports("pending")), (1, 0))
+
+
+class NativeSourceIdentity(unittest.TestCase):
+    def test_dirty_changed_or_missing_component_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+
+            def commit(directory):
+                subprocess.run(["git", "add", "."], cwd=directory, check=True, capture_output=True)
+                subprocess.run(["git", "-c", "user.name=Conformance Test", "-c",
+                                "user.email=conformance@example.invalid", "commit", "-m", "fixture"],
+                               cwd=directory, check=True, capture_output=True)
+                return subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=directory, text=True).strip()
+
+            subprocess.run(["git", "init", "--quiet", str(root)], check=True)
+            (root / ".gitignore").write_text(".qualification/\n")
+            pins = {}
+            for name in ("pichi", "dillo"):
+                directory = root / ".qualification/components" / name
+                directory.mkdir(parents=True)
+                subprocess.run(["git", "init", "--quiet", str(directory)], check=True)
+                (directory / "source").write_text("original\n")
+                pins[name] = {"revision": commit(directory)}
+            (root / "CONFORMANCE.json").write_text(json.dumps({"components": pins}))
+            commit(root)
+            with patch.object(gate, "ROOT", root):
+                self.assertEqual(gate.identity()["components"]["pichi"]["revision"], pins["pichi"]["revision"])
+                caller = root / ".qualification/components/pichi"
+                (caller / "source").write_text("changed\n")
+                with self.assertRaisesRegex(ValueError, "clean source tree"):
+                    gate.identity()
+                commit(caller)
+                with self.assertRaisesRegex(ValueError, "reviewed revision"):
+                    gate.identity()
+                # An empty child directory must not fall back to its parent's
+                # Git identity and masquerade as the component checkout.
+                empty = root / ".qualification/empty"
+                empty.mkdir()
+                with self.assertRaisesRegex(ValueError, "independent source checkout"):
+                    gate.checkout_identity(empty)
 
 
 if __name__ == "__main__":
