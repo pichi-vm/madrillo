@@ -55,6 +55,14 @@ suites at that revision; staged-image testing completes in 307.04 seconds.
 Windows opaque handle inheritance remains unsupported, so these requirements
 remain pending despite the new executable mappings.
 
+The Windows smoke and submodule VM suites at `11095377` fail at that explicit
+handle-inheritance check. Its retained staged-image artifact instead exposes a
+fixture permission error beneath the shared runner evidence directory. Pichi
+`b41333b8` protects the newly created empty fixture before populating it; this
+is the current component pin. [Native verification is running](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
+The superseded `544ddff6` and `11095377` manual platform runs were cancelled
+after confirming this replacement, freeing their queued/running ARM work.
+
 C19 now has reviewed first-code placement coverage for pipe/terminal workloads
 and an immediate helper, with an outside exit helper. Linux passes all sixteen launches
 and the cgroup v2 probe now verifies that the monitor stays outside workload
