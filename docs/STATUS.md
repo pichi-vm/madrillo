@@ -827,3 +827,30 @@ the 256 KiB console fixture without adding scheduling, replay or buffering
 protocols. Stalled viewers still disconnect independently at the bound;
 control/timeout/logging behavior and the 32-client cap remain unchanged.
 Native qualification is pending.
+
+All three native qualification and distribution jobs pass at `9952065` in
+[run 42159839850](https://github.com/pichi-vm/madrillo/actions/runs/42159839850).
+The archives include their native executable, verified default-feature source
+package, dependency license inventory/texts, Rust library notices and checksum.
+Full C01-C30 conformance remains 0/3.
+
+Linux default cleanup now uses the subreaper already established before launch:
+after reaping the leader, it discovers adopted children, opens pidfds, validates
+parentage with `waitid(P_PIDFD)`, and terminates through the same identities. It
+repeats adoption/reaping until `waitid(P_ALL, __WALL)` returns ECHILD; an empty
+procfs snapshot never proves completion. This preserves the changed-group and
+daemonization requirement without requiring a delegated cgroup for ordinary
+cleanup. Caller-supplied cgroups retain pre-exec placement, atomic kill, final
+population checks and OOM accounting. No library dependency or CLI flag is added.
+
+Unix supervision also registers SIGCHLD so inherited SIG_IGN/SA_NOCLDWAIT cannot
+discard leader status or release its PID before owned reaping. Child signals are
+consumed locally. The workload exec restores caught signal dispositions normally.
+Local strict Clippy and scope/control fixtures pass, including nested new-session
+helpers, concurrent escaped children, and eight force iterations per pipe/terminal
+case. A separate ignored-SIGCHLD launcher retains exit 37 and complete cleanup.
+Native retesting and caller integration of this Linux change are pending.
+
+Kernel contracts: [subreaper adoption](https://man7.org/linux/man-pages/man2/PR_SET_CHILD_SUBREAPER.2const.html),
+[pidfd identity](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), and
+[wait ownership and __WALL](https://man7.org/linux/man-pages/man2/waitpid.2.html).

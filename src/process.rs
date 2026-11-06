@@ -104,7 +104,10 @@ impl Workload {
             for _ in 0..64 {
                 let status = waitid(
                     Id::All,
-                    WaitPidFlag::WEXITED | WaitPidFlag::WNOHANG | WaitPidFlag::WNOWAIT,
+                    WaitPidFlag::WEXITED
+                        | WaitPidFlag::WNOHANG
+                        | WaitPidFlag::WNOWAIT
+                        | WaitPidFlag::__WALL,
                 )?;
                 let Some(pid) = status.pid() else {
                     return Ok(false);
@@ -124,7 +127,7 @@ impl Workload {
                     };
                     return Ok(self.observed.is_some());
                 }
-                waitpid(pid, Some(WaitPidFlag::WNOHANG))?;
+                waitpid(pid, Some(WaitPidFlag::WNOHANG | WaitPidFlag::__WALL))?;
             }
             Ok(false)
         }
@@ -301,15 +304,13 @@ impl Workload {
             errors.push("ConPTY job termination was requested, but the dependency does not expose a job-empty observation".into());
         }
         #[cfg(target_os = "linux")]
-        if let Some(group) = &self.group {
-            if let Err(error) = group.wait_empty() {
-                errors.push(error.to_string());
-            }
-        } else {
-            errors.push("process-group cleanup cannot guarantee removal of escaped descendants; no cgroup supplied".into());
+        if let Err(error) = reap_descendants() {
+            errors.push(error.to_string());
         }
         #[cfg(target_os = "linux")]
-        if let Err(error) = reap_descendants() {
+        if let Some(group) = &self.group
+            && let Err(error) = group.wait_empty()
+        {
             errors.push(error.to_string());
         }
         #[cfg(target_os = "macos")]
@@ -400,26 +401,92 @@ fn native_result(status: ExitStatus) -> LeaderResult {
 }
 
 #[cfg(target_os = "linux")]
+const DESCENDANT_WAIT: rustix::process::WaitIdOptions =
+    rustix::process::WaitIdOptions::from_bits_retain(
+        rustix::process::WaitIdOptions::EXITED.bits()
+            | rustix::process::WaitIdOptions::NOHANG.bits()
+            | nix::sys::wait::WaitPidFlag::__WALL.bits() as u32,
+    );
+
+#[cfg(target_os = "linux")]
 fn reap_descendants() -> io::Result<()> {
-    use nix::{
-        errno::Errno,
-        sys::wait::{WaitPidFlag, WaitStatus, waitpid},
+    use rustix::{
+        io::Errno,
+        process::{WaitId, waitid},
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(1);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
     loop {
-        match waitpid(None, Some(WaitPidFlag::WNOHANG)) {
-            Err(Errno::ECHILD) => return Ok(()),
-            Err(Errno::EINTR) => {}
-            Err(error) => return Err(error.into()),
-            Ok(WaitStatus::StillAlive) if std::time::Instant::now() >= deadline => {
-                return Err(io::Error::other(
-                    "adopted descendants remain live after scope cleanup",
-                ));
+        for _ in 0..64 {
+            match waitid(WaitId::All, DESCENDANT_WAIT) {
+                Err(Errno::CHILD) => return Ok(()),
+                Err(Errno::INTR) => {}
+                Err(error) => return Err(error.into()),
+                Ok(None) => break,
+                Ok(Some(_)) => {}
             }
-            Ok(WaitStatus::StillAlive) => std::thread::sleep(std::time::Duration::from_millis(2)),
-            Ok(_) => {}
+        }
+        if std::time::Instant::now() >= deadline {
+            return Err(io::Error::other(
+                "adopted descendants remain after termination",
+            ));
+        }
+        terminate_adopted_children()?;
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn terminate_adopted_children() -> io::Result<()> {
+    use rustix::{
+        io::Errno,
+        process::{Pid, PidfdFlags, Signal, WaitId, pidfd_open, pidfd_send_signal, waitid},
+    };
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader},
+        os::fd::AsFd,
+    };
+    // Madrillo establishes subreaping before launch and has no other child
+    // workloads. An exiting ancestor reparents its remaining children here,
+    // irrespective of their process groups, sessions or nested subreapers.
+    // /proc enumeration can miss a concurrent adoption; ECHILD from waitid,
+    // never an empty enumeration, is the final completion test.
+    for task in std::fs::read_dir("/proc/self/task")? {
+        let children = match File::open(task?.path().join("children")) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        for token in BufReader::new(children).split(b' ') {
+            let token = token?;
+            if token.is_empty() {
+                continue;
+            }
+            let number = std::str::from_utf8(&token)
+                .map_err(io::Error::other)?
+                .parse::<i32>()
+                .map_err(io::Error::other)?;
+            let pid =
+                Pid::from_raw(number).ok_or_else(|| io::Error::other("invalid adopted PID"))?;
+            let descriptor = match pidfd_open(pid, PidfdFlags::empty()) {
+                Ok(descriptor) => descriptor,
+                Err(Errno::SRCH) => continue,
+                Err(error) => return Err(error.into()),
+            };
+            // Validate ownership through the same kernel identity we signal.
+            // A reused numeric PID referring to a non-child yields ECHILD.
+            match waitid(WaitId::PidFd(descriptor.as_fd()), DESCENDANT_WAIT) {
+                Ok(Some(_)) | Err(Errno::CHILD | Errno::SRCH | Errno::INTR) => continue,
+                Err(error) => return Err(error.into()),
+                Ok(None) => {}
+            }
+            match pidfd_send_signal(descriptor, Signal::KILL) {
+                Ok(()) | Err(Errno::SRCH) => {}
+                Err(error) => return Err(error.into()),
+            }
         }
     }
+    Ok(())
 }
 
 #[cfg(windows)]

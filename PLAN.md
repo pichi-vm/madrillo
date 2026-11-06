@@ -109,7 +109,11 @@ The gate is ordering, not proof of native child membership. Native suspended or
 atomic creation may be needed; no workload code executes before containment.
 Disconnect before gated Start cancels; disconnect after authorization detaches.
 
-Linux needs cgroup scope and subreaping; Windows needs a Job Object with early
+Linux establishes subreaping before launch. After leader termination it stops
+and reaps adopted descendants through pidfds, including descendants that changed
+groups/sessions, until `waitid` with `__WALL` confirms `ECHILD`. A cgroup supplied
+by the caller adds pre-exec placement, resource accounting, atomic subtree
+termination and a final population check. Windows needs a Job Object with early
 membership. The user approved the native conmon process-group contract for
 macOS on 2026-11-05: Madrillo creates a workload process group and stops its
 members, including ordinary children and grandchildren. Workloads must keep

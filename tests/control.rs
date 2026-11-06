@@ -598,8 +598,17 @@ fn draining_viewer_survives_a_large_startup_burst() -> Result<(), Box<dyn std::e
 
 #[test]
 fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(not(target_os = "linux"))]
+    let modes = ["waiting-tree", "racing-tree"];
+    #[cfg(target_os = "linux")]
+    let modes = [
+        "waiting-tree",
+        "racing-tree",
+        "waiting-daemon-tree",
+        "racing-escaped-tree",
+    ];
     for terminal in [false, true].repeat(8) {
-        for mode in ["waiting-tree", "racing-tree"] {
+        for mode in modes {
             let root = tempfile::tempdir()?;
             let heartbeat = root.path().join("heartbeat");
             let flags = if terminal {
@@ -634,7 +643,7 @@ fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::e
                     | ServerMessage::Output { .. } => {}
                     ServerMessage::Completed { result } => {
                         assert_eq!(result.cause, CompletionCause::Forced, "{result:?}");
-                        #[cfg(target_os = "macos")]
+                        #[cfg(any(target_os = "linux", target_os = "macos"))]
                         assert_eq!(
                             result.cleanup,
                             madrillo::CleanupResult::Complete,

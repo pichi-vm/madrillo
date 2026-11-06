@@ -11,6 +11,15 @@ Madrillo is one Rust package: a minimal shared-types library and a complete
 monitor executable. All owned Rust targets forbid unsafe code. Pichi and dillo
 are the first integration, while the monitor remains independent of VM APIs.
 
+On Linux, Madrillo becomes a subreaper before launching the workload. After
+leader termination it adopts, terminates and reaps remaining descendants,
+including helpers in different groups or sessions. It validates child ownership
+and signals through pidfds; only a kernel wait reporting no children establishes
+completion. This requires native pidfd/wait support, readable procfs, and
+permission to signal the descendants. A supplied `--cgroup` additionally places
+the workload before execution, observes OOM counters and uses cgroup subtree
+termination. Missing permissions or failed cleanup remain explicit in the result.
+
 On macOS, Madrillo manages the workload process group it creates. Children and
 grandchildren must remain in that group for Madrillo to guarantee their cleanup
 after leader exit, forced stop or timeout. A program that creates another group

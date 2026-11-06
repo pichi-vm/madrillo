@@ -424,13 +424,23 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             }
             Ok(0)
         }
-        Some("branch") | Some("deep-tree") | Some("waiting-tree") => {
+        Some("branch")
+        | Some("escaped-branch")
+        | Some("deep-tree")
+        | Some("daemon-tree")
+        | Some("waiting-tree")
+        | Some("waiting-daemon-tree") => {
             let path = args.get(1).ok_or("heartbeat path missing")?;
+            #[cfg(unix)]
+            if args[0] == "escaped-branch" {
+                nix::unistd::setsid()?;
+            }
             let mut child = Command::new(std::env::current_exe()?)
-                .arg(if args[0] == "branch" {
-                    "descendant"
-                } else {
-                    "branch"
+                .arg(match args[0].to_str() {
+                    Some("branch") => "descendant",
+                    Some("escaped-branch") => "escaped-descendant",
+                    Some("daemon-tree" | "waiting-daemon-tree") => "escaped-branch",
+                    _ => "branch",
                 })
                 .arg(path)
                 .spawn()?;
@@ -443,18 +453,22 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 }
                 std::thread::sleep(Duration::from_millis(5));
             }
-            if args[0] != "deep-tree" {
+            if args[0] != "deep-tree" && args[0] != "daemon-tree" {
                 child.wait()?;
             }
             Ok(37)
         }
-        Some("racing-tree") => {
+        Some("racing-tree") | Some("racing-escaped-tree") => {
             let mut children = std::collections::VecDeque::<std::process::Child>::new();
             let deadline = Instant::now() + Duration::from_secs(15);
             while Instant::now() < deadline {
                 children.push_back(
                     Command::new(std::env::current_exe()?)
-                        .arg("descendant")
+                        .arg(if args[0] == "racing-escaped-tree" {
+                            "escaped-descendant"
+                        } else {
+                            "descendant"
+                        })
                         .arg(args.get(1).ok_or("heartbeat path missing")?)
                         .spawn()?,
                 );

@@ -19,7 +19,7 @@ not copying bugs, unsafe code, every flag alias, or OCI-specific machinery.
 | --- | --- | --- |
 | Independent monitor lifetime, attach/detach, input ownership | Required | One monitor per workload, independent of pichi attachments |
 | Native launch and retained exit result | Required | Leader status and workload cleanup are separate facts |
-| Descendant supervision, reaping, workload termination | Required | Linux cgroup/subreaper, Windows job; macOS managed process group under the approved helper contract |
+| Descendant supervision, reaping, workload termination | Required | Linux subreaper/pidfds and optional cgroup, Windows job; macOS managed process group under the approved helper contract |
 | Host terminal support and resize | Evaluate for inclusion; recommended opt-in | PTY/ConPTY for host programs; dillo VM console stays on pipes |
 | Conmon logging formats and destinations | Required | CRI file, journald, none, passthrough, supported combinations |
 | Limits, rotation/truncation, reopen, labels/tags | Required where applicable | Do not replace these with a proprietary transcript or a drop-on-full default |
@@ -61,7 +61,7 @@ to ordinary host children merely by copying that call. [Subreaper][subreaper],
 
 | Host | Direction | Qualification still required |
 | --- | --- | --- |
-| Linux | Dedicated workload cgroup, monitor outside its limits, subreaper for orphan wait/reap | Delegation/permissions, child membership before execution, all-descendant termination and empty-scope observation; cgroup v1/v2 support cannot be silently conflated |
+| Linux | Subreaper established before launch; pidfds for adopted descendants; optional caller-owned cgroup with monitor outside its limits | Final `waitid(__WALL)` must report no children; `/proc` snapshots alone cannot prove completion. Supplied cgroups require pre-exec membership and final population observation; cgroup v1/v2 OOM support cannot be conflated |
 | Windows | Job Object containing the workload and descendants, with ordinary breakaway disabled | Membership before execution, nested-job restrictions, completion tracking, safe API composition with ConPTY |
 | macOS | User-approved native workload process-group contract | Qualify cleanup of ordinary children/grandchildren that stay in the managed group. New groups/sessions, including shell job-control groups, are outside the guarantee and remain the workload's responsibility |
 

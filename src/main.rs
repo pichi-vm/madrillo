@@ -445,6 +445,9 @@ fn supervise(
         signal_hook::consts::SIGINT,
         signal_hook::consts::SIGHUP,
         signal_hook::consts::SIGQUIT,
+        // Replace an inherited SIG_IGN/SA_NOCLDWAIT so children stay waitable
+        // and their numeric identities cannot be reused before owned reaping.
+        signal_hook::consts::SIGCHLD,
     ])?;
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let mut notify = cli
@@ -666,7 +669,10 @@ fn supervise(
     }
     loop {
         #[cfg(unix)]
-        for signal in signals.pending() {
+        for signal in signals
+            .pending()
+            .filter(|signal| *signal != signal_hook::consts::SIGCHLD)
+        {
             if let Err(error) = child.signal(signal)
                 && cleanup_errors.len() < 32
             {
@@ -759,7 +765,10 @@ fn await_start(
 ) -> Result<bool, Box<dyn std::error::Error>> {
     loop {
         #[cfg(unix)]
-        if signals.pending().next().is_some() {
+        if signals
+            .pending()
+            .any(|signal| signal != signal_hook::consts::SIGCHLD)
+        {
             return Ok(false);
         }
         for (id, message) in connections.poll()? {

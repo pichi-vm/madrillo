@@ -25,7 +25,13 @@ fn run(
         .arg(mode)
         .args(args)
         .stdin(Stdio::null());
-    let mut child = command.spawn()?;
+    completion(&state, command.spawn()?)
+}
+
+fn completion(
+    state: &Path,
+    mut child: std::process::Child,
+) -> Result<Completion, Box<dyn std::error::Error>> {
     let end = Instant::now() + Duration::from_secs(10);
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -42,6 +48,31 @@ fn run(
     Ok(serde_json::from_slice(&fs::read(
         state.join("result.json"),
     )?)?)
+}
+
+#[cfg(unix)]
+#[test]
+fn ignored_sigchld_from_the_caller_does_not_discard_native_exit()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let state = root.path().join("state");
+    let child = Command::new("/bin/sh")
+        .args(["-c", "trap '' CHLD; exec \"$@\"", "ignored-sigchld"])
+        .arg(env!("CARGO_BIN_EXE_madrillo"))
+        .arg("--state-dir")
+        .arg(&state)
+        .arg("--")
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("emit")
+        .spawn()?;
+    let result = completion(&state, child)?;
+    assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
+    assert_eq!(
+        result.cleanup,
+        madrillo::CleanupResult::Complete,
+        "{result:?}"
+    );
+    Ok(())
 }
 
 fn payload(path: &Path, stream: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -70,7 +101,7 @@ fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::er
         let result = run(root.path(), "emit", &[], &[])?;
         assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
         assert_eq!(result.cause, CompletionCause::LeaderExit);
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         assert_eq!(
             result.cleanup,
             madrillo::CleanupResult::Complete,
@@ -113,7 +144,7 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
     let heartbeat = root.path().join("heartbeat");
     let result = run(root.path(), "tree", &[], &[heartbeat.as_os_str()])?;
     assert_eq!(result.leader, LeaderResult::Exit { code: 37 }, "{result:?}");
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     assert_eq!(
         result.cleanup,
         madrillo::CleanupResult::Complete,
@@ -133,28 +164,39 @@ fn leader_exit_stops_a_descendant_in_the_native_scope() -> Result<(), Box<dyn st
 #[test]
 fn grandchildren_and_fork_races_stay_in_the_native_scope() -> Result<(), Box<dyn std::error::Error>>
 {
+    #[cfg(not(target_os = "linux"))]
+    let modes = ["deep-tree", "waiting-tree", "racing-tree"];
+    #[cfg(target_os = "linux")]
+    let modes = [
+        "deep-tree",
+        "waiting-tree",
+        "racing-tree",
+        "daemon-tree",
+        "waiting-daemon-tree",
+        "racing-escaped-tree",
+    ];
     for terminal in [false, true] {
-        for mode in ["deep-tree", "waiting-tree", "racing-tree"] {
+        for mode in modes {
             let root = tempfile::tempdir()?;
             let heartbeat = root.path().join("heartbeat");
             let mut flags = Vec::new();
             if terminal {
                 flags.push("--terminal");
             }
-            if mode != "deep-tree" {
+            if mode != "deep-tree" && mode != "daemon-tree" {
                 flags.extend(["--timeout", "1"]);
             }
             let result = run(root.path(), mode, &flags, &[heartbeat.as_os_str()])?;
             assert_eq!(
                 result.cause,
-                if mode == "deep-tree" {
+                if mode == "deep-tree" || mode == "daemon-tree" {
                     CompletionCause::LeaderExit
                 } else {
                     CompletionCause::TimedOut
                 },
                 "{mode}: {result:?}"
             );
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
             assert_eq!(
                 result.cleanup,
                 madrillo::CleanupResult::Complete,
