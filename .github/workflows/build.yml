@@ -39,6 +39,9 @@ jobs:
       - name: Unix terminal and inheritance composition
         if: runner.os != 'Windows'
         run: cargo run --locked --features qualification --example terminal_exec
+      - name: Windows exact handles, stdio and atomic Job membership
+        if: runner.os == 'Windows'
+        run: cargo run --locked --features qualification --example windows_inheritance
       - name: Unix control rejects another account through a public socket
         if: runner.os != 'Windows'
         run: python3 tools/check_peer.py target/debug/madrillo target/debug/madrillo-fixture
