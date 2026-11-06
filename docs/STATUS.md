@@ -720,3 +720,22 @@ workload, requires the monitor and unpublished result to survive, resumes input,
 and verifies normal EOF/exit. Local strict Clippy, 12 control tests and 12 core
 tests pass; native verification of the fix is pending. This does not establish
 the cause of the earlier isolated SIGKILL.
+
+The stop/resume regression passed on macOS at `86b8a87`; that run still failed
+the separate launch diagnostic fixture. All three native jobs passed at
+`ac1e2ec` in [run 42154440189](https://github.com/pichi-vm/madrillo/actions/runs/42154440189).
+Expanded macOS launch stress then reproduced the separate SIGKILL and captured
+its native crash report in [run 42155068239](https://github.com/pichi-vm/madrillo/actions/runs/42155068239/job/127687148243).
+It is a libSystem child-at-fork abort (`os_once_t is corrupt`), with
+`_notify_fork_child` inheriting notification initialization in progress on the
+diagnostic worker. No workload code had executed. Apple's
+[notification implementation](https://github.com/apple-oss-distributions/Libnotify/blob/main/notify_client.c)
+and the [Go runtime's corresponding workaround](https://go.googlesource.com/go/+/master/src/runtime/sys_darwin.go)
+document this initialization/fork interaction.
+
+Native logger construction now completes before starting its worker and before
+workload launch. All 128 ordinary-user macOS diagnostic launches passed at
+`0b8da07`, with Linux and Windows also green in
+[run 42155446764](https://github.com/pichi-vm/madrillo/actions/runs/42155446764).
+The stress fixture fails on the first failed launch; it does not retry failures
+away. Full C01-C30 conformance remains 0/3.
