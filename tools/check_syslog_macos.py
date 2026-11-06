@@ -78,7 +78,7 @@ def delivered(pid, text):
                 assert entry["subsystem"] == "org.pichi.madrillo", entry
                 assert entry["category"] == "monitor", entry
                 assert entry["messageType"] == "Error", entry
-            print(f"macOS unified logging delivered: {matches!r}")
+            print(f"macOS unified logging delivered: pid={pid}, uid={matches[0]['userID']}", flush=True)
             return entries
         if time.monotonic() >= deadline:
             raise AssertionError(
@@ -92,7 +92,7 @@ with tempfile.TemporaryDirectory(prefix="madrillo-syslog-") as tmp:
     root = Path(tmp)
     # Exercise the intermittent fresh-launch failure too. Each attempt must
     # pass independently; this is not a retry that hides a failed launch.
-    for attempt, level in enumerate(["error", "trace"] * 8):
+    for attempt, level in enumerate(["error", "trace"] * 64):
         state = root / f"{attempt}-{level}"
         # A failed exit hook produces an error-level monitor diagnostic after
         # successful capture. The workload's own exit and stderr stay separate.
