@@ -189,7 +189,14 @@ capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes,
 clients to 32 and each client's pending delivery to 1 MiB. Blocking log work has
 one worker; capture workers and Windows final-delivery workers have fixed bounds.
 This is backpressure with explicit failures, not a promise to retain unlimited
-output from a stalled sink. C15 remains pending its complete durability review.
+output from a stalled sink.
+
+C15 is ready to execute with native atomic-publication/collision checks and
+Linux syscall/storage fault injection. Source review confirms default file-log
+synchronization, independent result-file synchronization, no-overwrite rename,
+and Unix directory synchronization before final acknowledgement or callback.
+The log-sync opt-out cannot disable result synchronization. Claims are limited
+to the operating system/filesystem guarantees documented in README.md.
 
 The storage suite also injects EIO into the exact state directory's post-rename
 fsync. The monitor must fail visibly without sending Completed or running the

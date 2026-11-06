@@ -2,19 +2,20 @@
 
 Goal active. Three sequential plan reviews are complete. Full conformance:
 **0 of 3 consecutive clean passes**. The current [manifest](../CONFORMANCE.json)
-has 19 requirements with reviewed executable coverage. C04, C07, C09, C10,
-C15, C18, C19, C24, C26, C27 and C28 remain pending. Readiness is not a pass.
+has 20 requirements with reviewed executable coverage. C04, C07, C09, C10,
+C18, C19, C24, C26, C27 and C28 remain pending. Readiness is not a pass.
 
 The macOS scope decision is settled: descendants must remain in the workload's
 managed process group. Dillo owns shutdown for any helper it deliberately moves
 outside it. PLAN.md and native tests cover ordinary descendants and demonstrate
 the escaped-session boundary. No additional macOS scope approval is needed.
 
-Native Linux/macOS/Windows qualification passes at `3f44a6d` in
-[run 42173523316](https://github.com/pichi-vm/madrillo/actions/runs/42173523316),
+Native Linux/macOS/Windows qualification passes at `0708aec` in
+[run 42174112956](https://github.com/pichi-vm/madrillo/actions/runs/42174112956),
 including blocked input, malformed/incomplete clients, CLI identity, and retained
-leader status when cleanup stalls. Subsequent publication-failure fixtures are
-being qualified separately. Full native passes have not started.
+leader status when cleanup stalls. Failed result writes/renames and directory
+synchronization withhold completion acknowledgements and exit callbacks. Full
+native passes have not started.
 
 Remaining Windows dependency requirements are exact opaque HANDLE inheritance
 and ConPTY Job-empty observation; [draft API requests](reference/WINDOWS-API-REQUESTS.md)
