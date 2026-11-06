@@ -17,7 +17,10 @@ use std::{
 };
 
 const MAX_CLIENTS: usize = 32;
-const MAX_PENDING_BYTES: usize = 256 * 1024;
+// JSON byte arrays expand console data by up to four times. Allow the same
+// encoded-byte budget as one maximum frame so an ordinary boot report can
+// survive a scheduling burst; every client remains independently bounded.
+const MAX_PENDING_BYTES: usize = MAX_FRAME_BYTES;
 
 pub(crate) struct Connections {
     listener: Option<Listener>,

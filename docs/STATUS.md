@@ -817,3 +817,13 @@ licenses, then rejected a dependency file timestamp earlier than ZIP's 1980
 epoch. Packaging now uses ZIP's documented timestamp clamping, preserving file
 contents; a pre-1980 local fixture verifies that behavior. Native retesting is
 pending. Linux produced its native archive successfully.
+
+The repeated macOS force cases pass at `95d010b`, but the startup-burst
+fixture exposes an undersized pending-output budget on macOS: 256 KiB of
+encoded JSON represents only about 64 KiB of console bytes. The fixture's
+actively draining client can fill that budget during a scheduling burst.
+The per-client bound is now the existing 1 MiB maximum-frame budget, allowing
+the 256 KiB console fixture without adding scheduling, replay or buffering
+protocols. Stalled viewers still disconnect independently at the bound;
+control/timeout/logging behavior and the 32-client cap remain unchanged.
+Native qualification is pending.
