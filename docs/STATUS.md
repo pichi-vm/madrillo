@@ -1,110 +1,69 @@
 # Implementation status
 
-Follow-up qualification in progress. All C01–C30 requirements passed **three consecutive
-clean full conformance rounds** in [run 42232080329](https://github.com/pichi-vm/madrillo/actions/runs/42232080329).
-The tested sources are Madrillo `defe4b7468d0e1f7c7c22c793f254d52ae73a2a4`
-and Pichi `b8ddfbd3b45be53a0a067b72119866ade1cbe8bc`. Pichi now includes a
-startup diagnostic fix at `96d4f7a83cde1c7326b4bc5bdc7a99147051adac`: a launch
-failure includes the retained, bounded monitor error after observing its owned
-process for at most one second. A regression fails monitor preparation before
-any workload executes. Linux caller checks pass. Fresh full native rounds must
-qualify this follow-up; the previous passes are not attributed to changed sources.
-Pichi now also respects the caller's native temporary directory for Unix
-sockets at `74223b25030b729e146154f5654b067175ca21b0`. Compact absolute addresses
-are retained for later clients with different environments. The detached CLI
-regression failed against the old hard-coded `/tmp` path and passes with this
-change; full local caller qualification and formatting pass. Madrillo's
-production implementation remains unchanged.
+Implementation and conformance are complete. All C01–C30 requirements passed
+**three consecutive clean full native rounds** in
+[run 42254131097](https://github.com/pichi-vm/madrillo/actions/runs/42254131097).
+The executed sources are Madrillo `722f8b9e9b265f0318743141b74a16ab797cb1c8`
+and Pichi `c54f003d727c9b418db3422f49b0d7ca583fba1f`. Subsequent completion
+records change documentation only; they are not represented as executed builds.
 
-The current Pichi candidate is `c54f003d727c9b418db3422f49b0d7ca583fba1f`.
-It incorporates main's explicit device-bus contract and removes the redundant
-fallback planner and its PMI-parser fixtures. Native checks now require main's
-explicit bus, storage and build-pipe assertions. The full local caller suite
-passes. Pichi's CI monitor builder now reads Madrillo's pinned toolchain instead
-of applying Pichi's nightly; a real local build and checkout cleanup passed.
-Run [42252826521](https://github.com/pichi-vm/madrillo/actions/runs/42252826521)
-was canceled before qualification finished because the newly conflicting Pichi
-branch required this merge and a new source pin.
+The [final audit](reviews/07-completion.md) independently verified all nine
+native reports, 186 exact command logs, nine distribution archives and the
+ledger streak of 1, 2, 3. Artifact `13521879814` (`conformance-evidence`) contains
+the reports, logs, packages and ledger. Local reports, logs and the requirement
+audit are retained in the ignored `conformance-runs` directory. Earlier evidence
+is clearly separated under `conformance-runs/archive/42232080329`. Task scratch
+files have been removed; normal build caches and qualification evidence remain.
 
-The follow-up run [42242142705](https://github.com/pichi-vm/madrillo/actions/runs/42242142705)
-passed all three Windows rounds and macOS rounds one and three. The macOS
-second round failed `blocked_child_input_cannot_hold_force_or_timeout`; Pichi's
-new startup-diagnostic regression passed all six completed native reports.
-Delaying each input write by 750 ms locally reproduced the fixture's five-second
-runtime expiring during setup. The revised fixture establishes administrative
-attachment first, gives the force case a separate setup budget, and checks a
-15-second timeout within five seconds of its deadline. Force completion retains
-its eight-second bound. Both modes passed with setup over six seconds; the
-artificial delay was removed. The full local control suite and strict Madrillo
-Clippy passed. The failed run was canceled when this fixture change required
-fresh qualification; it does not count toward a final clean streak.
+The final caller includes bounded startup diagnostics, native temporary-directory
+socket placement and reconnection across differing caller environments. It
+preserves current main's explicit device-bus contract and removes the redundant
+fallback planner. Pichi's CI helper uses Madrillo's own pinned compiler. Local
+caller checks, formatting, commit lint, packaging patch validation and a real
+monitor build/cleanup check passed. The final native rounds qualify the caller
+on Linux, macOS and Windows MSVC.
 
-An additional strict Pichi Clippy check found existing diagnostics outside the
-changed workload files (including workspace dependencies). It is not claimed
-as passing. Pichi's native caller tests and formatting passed locally.
-
-The next run [42245824004](https://github.com/pichi-vm/madrillo/actions/runs/42245824004)
-passed all three macOS and Windows rounds, including the corrected pressure
-fixture. Linux rounds one and three passed; every command in round two also
-returned success, but one required Rust test-result line was corrupted by a
-concurrent monitor warning written to the merged stdout/stderr file. The strict
-evidence check therefore rejected that round. Log capture now keeps separate
-stream descriptors during execution and appends retained stderr afterward;
-the nested Pichi test wrapper also captures its streams separately. A forced
-interleaving reproducer fails the old capture and preserves both the exact
-success marker and diagnostic with the correction. No markers or previous
-reports were relaxed or rewritten. Fresh full qualification is required again.
-
-Run [42250045380](https://github.com/pichi-vm/madrillo/actions/runs/42250045380)
-was canceled after local caller checks caught a capture-wrapper omission:
-caller-lifetime markers are emitted on stderr, so both independently captured
-streams must be checked. That correction passes the full local caller suite.
-The next full run also pins Pichi's native temporary-directory change above.
-
-The [final audit](reviews/07-completion.md) verifies all nine native reports,
-186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.
-The `conformance-evidence` artifact includes each round's reports and logs.
-Local copies of the verified reports, logs, ledger and requirement audit are
-retained in the ignored `conformance-runs` output directory. These are final
-evidence artifacts, separate from task scratch files, which have been removed.
+Conformance retains both stdout and stderr without allowing concurrent writes
+to corrupt required result markers. Pressure tests separate setup allowance from
+force/timeout deadlines. Earlier failed or canceled follow-up runs are not part
+of the final streak. Madrillo's production implementation remains unchanged
+from `0e860df8ec6414d28d87908a4da775cfdf5bc047`.
 
 Madrillo CI uses public Ubuntu, macOS and Windows runners with ordinary child
-processes. It does not check out or execute Dillo, require hardware virtualization,
-or dispatch Pichi/Dillo VM workflows. The real Pichi build CLI verifies the direct
-guest-first CBOR channel and inherited port/mount arguments without booting a guest.
-See the [CI scope review](reviews/06-public-ci.md).
+processes. It does not build or execute the Dillo VM binary, require hardware
+virtualization, or dispatch Pichi/Dillo VM workflows. The actual Pichi build CLI
+checks its direct guest-first CBOR channel and inherited port/mount arguments
+without booting a guest. See the [CI scope review](reviews/06-public-ci.md).
 
 The shared library is types-only and serde-only with `forbid(unsafe_code)`.
-The executable denies unsafe code except in its single approved private Windows
-OS boundary. Native exact inheritance, Job/ConPTY composition, scope cleanup and
-terminal control pass. The approved macOS process-group contract remains in force:
-workloads keep helpers in the managed group and own any deliberate escape.
+The executable denies unsafe code except in its approved private Windows OS
+boundary. The approved macOS process-group contract remains in force: workloads
+keep helpers in the managed group and own any deliberate escape.
 
-Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) incorporates current
-main, with qualified Dillo pin `88d507c`. Dillo stdin delivery
-[#101](https://github.com/pichi-vm/dillo/pull/101) has landed on main. Resize
-[#102](https://github.com/pichi-vm/dillo/pull/102) was replaced by
-[#105](https://github.com/pichi-vm/dillo/pull/105). Console-loss shutdown
-[#103](https://github.com/pichi-vm/dillo/pull/103) merged into the old resize
-branch, not main. Pichi retains its complete console integration pin rather
-than dropping resize or shutdown behavior. No VM workflow was dispatched or
-retried, and this session has not merged an integration PR.
+[Madrillo is public](https://github.com/pichi-vm/madrillo), under Apache-2.0.
+Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) is ready and mergeable,
+but its separate [automatic CI](https://github.com/pichi-vm/pichi/actions/runs/42254103699)
+is not fully green. Static checks, public ARM64 workspace tests, packaging and
+the x86_64 appliance build passed. The ARM64 appliance job is queued, and its
+public macOS workspace job was canceled. Dependent native VM jobs have not yet
+verified the final caller.
 
-Pichi PR #154 is ready for review but its separate CI is **not fully green**.
-Its [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994038063)
-now reports the retained startup diagnostic: `Operation not permitted`.
-The passing native launch test uses the runner's workspace `TMPDIR`, while
-Pichi previously hard-coded `/tmp`. Respecting `TMPDIR` fixes that discrepancy;
-the sandbox explanation remains a hypothesis until automatic VM CI verifies it.
-The [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994037922)
-resumed after the runner reboot, then hit a Rust nightly internal compiler
-error while compiling `nix` for the monitor. The builder now uses Madrillo's
-own pinned compiler as described above. Windows and Linux x86_64 jobs passed.
-These separate jobs were inspected read-only, without dispatching VM CI.
+The prior [macOS VM failure](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994038063)
+reported `Operation not permitted` at monitor startup. Respecting the workspace
+`TMPDIR` fixes a likely sandbox discrepancy, but this explanation is not yet
+confirmed by that runner. The prior [ARM64 failure](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994037922)
+was a Rust nightly internal compiler error in `nix` during the monitor build;
+the build helper now uses Madrillo's pinned compiler. These separate jobs were
+inspected read-only, without manually dispatching or retrying VM CI.
 
-[Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
-API request drafts were never sent. The separate integration CI failures still
-need resolution before merge; they are not claimed as passing by this gate.
+Pichi retains Dillo `88d507c`, which contains resize and default console-loss
+shutdown. Dillo stdin delivery [#101](https://github.com/pichi-vm/dillo/pull/101)
+has landed on main. Resize is now [#105](https://github.com/pichi-vm/dillo/pull/105);
+shutdown [#103](https://github.com/pichi-vm/dillo/pull/103) merged into the old
+resize branch, not main. Updating to current Dillo main would lose required
+behavior. The pin therefore remains explicit until the complete feature set
+lands. Integration review and merge decisions remain separate from this native
+conformance result. This session has not merged an integration PR.
 
 ## Historical qualification notes
 

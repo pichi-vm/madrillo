@@ -6,8 +6,8 @@ workflows stay unchanged and must not be manually dispatched for this task.
 
 The native matrix now uses Ubuntu, macOS and Windows hosted runners. The Dillo
 qualification workflow and VM orchestration scripts are removed. Conformance
-does not check out Dillo, install guest toolchains, reserve hugepages or require
-KVM/HVF/WHP. Linux's cgroup-v1 fixture retains its disposable QEMU kernel with
+does not build or execute Dillo, install guest toolchains, reserve hugepages or
+require KVM/HVF/WHP. Linux's cgroup-v1 fixture retains its disposable QEMU kernel with
 CPU-emulation fallback; it does not execute Dillo.
 
 C24 now names the generic monitor contract. An ordinary workload deliberately

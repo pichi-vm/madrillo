@@ -5,8 +5,8 @@ Status: three sequential plan reviews completed, 2026-11-05. See
 and [acceptance review](docs/reviews/03-acceptance.md). Implementation and all
 three complete native conformance rounds passed at the source revisions recorded
 in the [completion review](docs/reviews/07-completion.md).
-The subsequent Pichi startup-diagnostic change requires fresh qualification;
-the earlier passes remain evidence for their recorded sources only.
+The final gate includes the Pichi startup-diagnostic and socket-placement
+changes, its merged device contract, and all C01–C30 requirements.
 
 ## Objective and non-negotiable boundaries
 
