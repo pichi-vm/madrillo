@@ -27,6 +27,20 @@ binary input/reconnection. Guest resize and full
 Pichi/Dillo/build qualification remain unfinished. The focused Dillo VM workflow
 tests current monitor sources without requeueing Dillo's entire repository suite.
 
+Pichi `0f5c2cce` now integrates current image requirements and retains writable
+storage through monitor ownership. Linux caller tests cover detach, duplicate-use
+rejection, independent exit-callback cleanup, and preservation when completion is
+missing or incomplete. Native macOS/Windows validation of this merged source is
+pending. The PR is mergeable again; no PR has been merged.
+
+Dillo `6086bf1` passes Linux and Windows VM CI, including sustained unread guest
+input before monitor death and observed cooperative zero exit:
+[run 42176314901](https://github.com/pichi-vm/dillo/actions/runs/42176314901).
+The corresponding macOS and ARM64 VM jobs remain queued. Native console unit
+tests pass on Linux/macOS/Windows at the same revision. The C24 command mapping
+also requires the non-consuming full-pipe liveness probe. This remains partial
+qualification, not a complete conformance round.
+
 ## Historical qualification notes
 
 The notes below record incremental work at older revisions. Statements that a
