@@ -34,9 +34,10 @@ Linux x86 and Windows in [run 42190578920](https://github.com/pichi-vm/madrillo/
 The same cases, including explicit monitor-crash execution with Madrillo
 `30437e1`, pass on macOS/HVF in [Dillo's native CI job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493463).
 The non-consuming full-pipe liveness unit test also passes there. An earlier
-hosted Linux boot timeout has not reproduced or been explained. Linux ARM64
-remains queued, as does the focused workflow's separate macOS job; no absent
-runner is counted as a pass.
+hosted Linux boot timeout has not reproduced or been explained. Dillo's
+[Linux ARM64 job](https://github.com/pichi-vm/dillo/actions/runs/42185730210/job/127785493148)
+now passes the real console, resize and explicitly invoked monitor-crash cases.
+All current checks on Dillo PR #92 are green; it is ready for review.
 
 Linux/KVM also passes the official-image build, committed-submodule cases, and
 full staged-image create/extend/compose build-and-boot suite (359.72 seconds).
@@ -60,8 +61,8 @@ handle-inheritance check. Its retained staged-image artifact instead exposes a
 fixture permission error beneath the shared runner evidence directory. Pichi
 `b41333b8` protects the newly created empty fixture before populating it; this
 is the current component pin. [Native verification is running](https://github.com/pichi-vm/pichi/actions/runs/42196385368).
-The superseded `544ddff6` and `11095377` manual platform runs were cancelled
-after confirming this replacement, freeing their queued/running ARM work.
+Cancellation was requested for the superseded `544ddff6` and `11095377` manual
+platform runs after confirming this replacement, to free their ARM work.
 
 C19 now has reviewed first-code placement coverage for pipe/terminal workloads
 and an immediate helper, with an outside exit helper. Linux passes all sixteen launches
