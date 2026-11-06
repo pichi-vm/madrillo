@@ -844,14 +844,80 @@ fn administrative_eof_does_not_require_taking_the_active_writer()
 fn malformed_client_does_not_stop_monitor_or_other_clients()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut monitor = Monitor::spawn("sleep")?;
-    let mut bad = monitor.connect()?;
-    bad.raw(&u32::MAX.to_be_bytes())?;
+    let mut packets = vec![
+        u32::MAX.to_be_bytes().to_vec(),
+        0_u32.to_be_bytes().to_vec(),
+        vec![0],
+        vec![0, 0, 0],
+        vec![0, 0, 0, 100, b'{'],
+    ];
+    for json in [
+        br#"{"version":65535,"message":{"type":"terminate"}}"#.to_vec(),
+        br#"{"version":1,"message":{"type":"invented"}}"#.to_vec(),
+        br#"{"version":1,"message":{"type":"input","bytes":[256]}}"#.to_vec(),
+        vec![0xff; 64],
+        [vec![b'['; 200], vec![b']'; 200]].concat(),
+    ] {
+        let mut packet = u32::try_from(json.len())?.to_be_bytes().to_vec();
+        packet.extend(json);
+        packets.push(packet);
+    }
+    let mut clients = Vec::new();
+    for packet in packets {
+        let mut bad = monitor.connect()?;
+        bad.raw(&packet)?;
+        // Keep incomplete frames open. The monitor must not wait for their
+        // remaining bytes before serving another client's termination request.
+        clients.push(bad);
+    }
     let mut good = monitor.connect()?;
     good.send(ClientMessage::Terminate)?;
     assert!(
         matches!(good.next()?, ServerMessage::Completed { result } if result.cause == CompletionCause::Forced)
     );
     monitor.wait()
+}
+
+#[test]
+fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std::error::Error>> {
+    for force in [false, true] {
+        let mut monitor = Monitor::spawn("sleep")?;
+        let mut writer = monitor.connect()?;
+        writer.attach(true)?;
+        for _ in 0..8 {
+            writer.send(ClientMessage::Input {
+                bytes: vec![b'x'; 48 * 1024],
+            })?;
+        }
+        assert!(matches!(
+            writer.next()?,
+            ServerMessage::Error {
+                code: madrillo::ErrorCode::ResourceLimit,
+                ..
+            }
+        ));
+        writer.send(ClientMessage::CloseInput)?;
+        let mut control = monitor.connect()?;
+        control.send(if force {
+            ClientMessage::Terminate
+        } else {
+            ClientMessage::Wait
+        })?;
+        let ServerMessage::Completed { result } = control.next()? else {
+            return Err("blocked input prevented final completion".into());
+        };
+        assert_eq!(
+            result.cause,
+            if force {
+                CompletionCause::Forced
+            } else {
+                CompletionCause::TimedOut
+            }
+        );
+        assert_eq!(result.cleanup, madrillo::CleanupResult::Complete);
+        monitor.wait()?;
+    }
+    Ok(())
 }
 
 #[test]

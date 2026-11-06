@@ -388,9 +388,13 @@
       "id": "C25",
       "behavior": "Protocol and diagnostics",
       "criterion": "Fixed version, checked lengths/allocations, bounded malformed input; private native endpoint/ACL; separate diagnostics/log levels/native syslog where applicable; CLI help/version/API identity",
-      "status": "pending",
+      "status": "ready",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "unix-control-peer",
+        "windows-control-privacy",
+        "linux-syslog",
+        "macos-syslog"
       ],
       "evidence": [],
       "hosts": [
@@ -577,7 +581,18 @@
         "test global_cap_counts_bytes_already_in_the_active_file ... ok",
         "test failed_rotation_preserves_active_log_and_removes_prepared_file ... ok",
         "test allowlist_checks_directory_boundaries_and_existing_files ... ok",
-        "test reopen_rotates_the_file_and_acknowledges_completion ... ok"
+        "test reopen_rotates_the_file_and_acknowledges_completion ... ok",
+        "test cli_identity_and_help_require_no_workload ... ok",
+        "test malformed_client_does_not_stop_monitor_or_other_clients ... ok",
+        "test blocked_child_input_cannot_hold_force_or_timeout ... ok",
+        "test empty_stream_is_disconnect_but_partial_header_is_error ... ok",
+        "test oversized_prefix_is_rejected_without_reading_the_body ... ok",
+        "test partial_payload_is_not_a_clean_disconnect ... ok",
+        "test binary_input_survives_multiple_frames ... ok",
+        "test version_and_unknown_messages_are_rejected ... ok",
+        "test response_is_framed_and_oversize_never_emits_a_prefix ... ok",
+        "test thresholds_preserve_workload_logs_and_aliases ... ok",
+        "test fatal_errors_survive_threshold_and_invalid_levels_launch_nothing ... ok"
       ]
     },
     {
@@ -1061,12 +1076,86 @@
       "success_markers": [
         "test adopted_orphans_are_reaped_while_leader_is_running ... ok"
       ]
+    },
+    {
+      "id": "unix-control-peer",
+      "hosts": [
+        "linux",
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_peer.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "Unix peer qualification: public socket rejects other UID; owner continues normally"
+      ]
+    },
+    {
+      "id": "windows-control-privacy",
+      "hosts": [
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "control"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "test endpoint_acl_grants_only_the_invoking_user ... ok",
+        "test state_privacy_is_inherited_before_creation ... ok"
+      ]
+    },
+    {
+      "id": "linux-syslog",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "-n",
+        "python3",
+        "tools/check_diagnostics.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "native syslog: PID attribution, facility, severity, thresholds and workload separation passed"
+      ]
+    },
+    {
+      "id": "macos-syslog",
+      "hosts": [
+        "macos"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_syslog_macos.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 120,
+      "success_markers": [
+        "native macOS unified logging: fatal delivery, process identity and workload separation passed"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "0669b4fc0e3cdb508d91d06b719975b807f44da0"
+      "revision": "c212e1ae5fe4290abfd7252c189b640f2c24b725"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",

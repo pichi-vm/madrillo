@@ -99,6 +99,38 @@ fn payload(path: &Path, stream: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Er
 }
 
 #[test]
+fn cli_identity_and_help_require_no_workload() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    for argument in ["--help", "--version", "--api-version"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+            .arg(argument)
+            .current_dir(root.path())
+            .stdin(Stdio::null())
+            .output()?;
+        assert!(output.status.success(), "{argument}: {output:?}");
+        assert!(output.stderr.is_empty(), "{argument}: {output:?}");
+        let text = String::from_utf8(output.stdout)?;
+        match argument {
+            "--api-version" => assert_eq!(text.trim(), madrillo::PROTOCOL_VERSION.to_string()),
+            "--version" => assert_eq!(text.trim(), concat!("madrillo ", env!("CARGO_PKG_VERSION"))),
+            _ => {
+                for option in [
+                    "--stdin",
+                    "--terminal",
+                    "--timeout",
+                    "--control",
+                    "--log-path",
+                ] {
+                    assert!(text.contains(option), "missing CLI contract: {option}");
+                }
+            }
+        }
+        assert_eq!(fs::read_dir(root.path())?.count(), 0);
+    }
+    Ok(())
+}
+
+#[test]
 fn immediate_output_and_native_exit_are_retained() -> Result<(), Box<dyn std::error::Error>> {
     for _ in 0..12 {
         let root = tempfile::tempdir()?;

@@ -185,6 +185,23 @@ The ordinary blocked diagnostic-pipe test runs natively on every host and
 requires monitor exit as well as retained timeout/flush errors. These additions
 do not promote the still-pending pressure/durability requirements.
 
+C25 is ready to execute. Positive markers cover version, invalid lengths and
+encoding, unknown messages, truncated frames, bounded outgoing encoding, and
+CLI help/version/API identity without creating state. Real clients leave partial
+headers and payloads open while another client terminates the workload; invalid
+versions, byte values, UTF-8 and deeply nested JSON must not stop supervision.
+The Unix peer fixture requires another account to connect through a public
+socket and be rejected before its request runs. Windows fixtures inspect the
+actual endpoint DACL and private state inheritance. Native Linux syslog/macOS
+unified-logging fixtures require delivery and workload/diagnostic separation;
+every host checks diagnostic levels, aliases and blocked stderr. Frame storage,
+client counts and per-turn servicing are explicitly bounded in the executable.
+
+The input-pressure fixture sends enough data to fill a non-reading workload's
+native pipe and bounded pending queue, requires ResourceLimit, then requests EOF.
+Both a separate client's force request and the detached runtime deadline must
+still finish with complete pipe-workload cleanup on every native host.
+
 C13 is ready to execute. Its Windows path checks inspect the held directory handle's owner and DACL
 before opening or creating a log. Only the invoking user, SYSTEM and
 Administrators may receive modification rights; other accounts may receive
