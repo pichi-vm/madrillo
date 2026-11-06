@@ -19,8 +19,11 @@ native passes have not started.
 
 Remaining Windows dependency requirements are exact opaque HANDLE inheritance
 and ConPTY Job-empty observation; [draft API requests](reference/WINDOWS-API-REQUESTS.md)
-have not been sent to maintainers. Pichi's caller console-close fixture is also
-under investigation on the native Windows test desktop. Guest resize and full
+have not been sent to maintainers. Pichi's caller qualification passes on all
+three native hosts at `39bcb773` in
+[run 42174800407](https://github.com/pichi-vm/madrillo/actions/runs/42174800407),
+including actual Windows console-window closure, caller Job loss, and subsequent
+binary input/reconnection. Guest resize and full
 Pichi/Dillo/build qualification remain unfinished. The focused Dillo VM workflow
 tests current monitor sources without requeueing Dillo's entire repository suite.
 

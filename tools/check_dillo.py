@@ -21,12 +21,13 @@ def main():
     print(f"Dillo revision: {revision.strip()}; monitor: {monitor}", flush=True)
     cases = [
         ("managed_console_close_stops_a_booted_vm", False,
-         "native VM console lifetime: boot report, ordinary input, cooperative zero exit"),
-        ("null_console_input_requests_shutdown_without_a_flag", False, None),
+         ["native VM console lifetime: boot report, ordinary input, cooperative zero exit"]),
+        ("null_console_input_requests_shutdown_without_a_flag", False, []),
         ("monitor_crash_allows_cooperative_vm_teardown", True,
-         "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero"),
+         ["madrillo crash: unread guest console input stayed backpressured",
+          "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero"]),
     ]
-    for name, ignored, marker in cases:
+    for name, ignored, markers in cases:
         test = "console_lifetime::" + name
         command = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "dillo",
                    "--features", "vm-tests", "--test", "boot", test, "--", "--exact",
@@ -41,7 +42,8 @@ def main():
         result.check_returncode()
         assert test in result.stdout, f"missing native test: {test}"
         assert "1 passed; 0 failed; 0 ignored;" in result.stdout, "VM test did not execute"
-        assert marker is None or marker in result.stdout, f"missing VM evidence: {marker}"
+        for marker in markers:
+            assert marker in result.stdout, f"missing VM evidence: {marker}"
     print("native Dillo console lifetime: three real VM cases passed", flush=True)
 
 

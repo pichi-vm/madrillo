@@ -1158,11 +1158,11 @@
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "8f9db790366f08bd3be9a6df199ebf0cc1e6e020"
+      "revision": "39bcb773a27b7a62f23c63ce505d40d8c8a8c28e"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
-      "revision": "9efc73a51aeabd122674914804db663a94a0bced"
+      "revision": "8515f1ad850d557e04291f564cf33c3366e7872c"
     }
   }
 }

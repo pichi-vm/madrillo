@@ -73,7 +73,8 @@ Pichi requests `CREATE_BREAKAWAY_FROM_JOB`; a containing Job must permit that
 operation. A launch that is denied does not fall back to keeping the monitor
 inside the caller's Job. Native caller qualification exercises both denied
 breakaway and permitted caller Job loss, using a separate test host outside
-the runner's Job. Console-loss coverage remains tracked separately by C04.
+the runner's Job. It also closes the caller's actual console window and checks
+that the surviving monitor/workload accepts reattachment and binary input.
 
 Unix listeners check each connecting process's effective UID against the
 monitor's user before accepting requests or delivering output. This also
