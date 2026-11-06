@@ -2,10 +2,10 @@
 
 The mother armadillo: a native process monitor inspired by conmon.
 
-This repository is under construction. The [implementation plan](PLAN.md)
-defines the full scope, success criteria, and required three consecutive clean
-conformance passes. No feature completeness or native-platform conformance is
-claimed yet.
+The implementation passed all C01–C30 criteria in three consecutive full native
+conformance rounds on Linux, macOS and Windows MSVC. The [completion review](docs/reviews/07-completion.md)
+records the tested source revisions, reports and compatibility boundaries.
+The [implementation plan](PLAN.md) defines the scope and acceptance criteria.
 
 Madrillo is one Rust package: a minimal shared-types library and a complete
 monitor executable. The library and qualification targets forbid unsafe code.

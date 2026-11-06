@@ -2,8 +2,9 @@
 
 Status: three sequential plan reviews completed, 2026-11-05. See
 [scope review](docs/reviews/01-scope.md), [native review](docs/reviews/02-native-lifetime.md),
-and [acceptance review](docs/reviews/03-acceptance.md). Ready for implementation
-with the stated qualification gates. No conformance completion is claimed.
+and [acceptance review](docs/reviews/03-acceptance.md). Implementation and all
+three complete native conformance rounds passed at the source revisions recorded
+in the [completion review](docs/reviews/07-completion.md).
 
 ## Objective and non-negotiable boundaries
 

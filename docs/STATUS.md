@@ -1,74 +1,40 @@
 # Implementation status
 
-Goal active. Three sequential plan reviews are complete. Full conformance:
-**0 of 3 consecutive clean passes**. The [manifest](../CONFORMANCE.json) maps
-all thirty requirements to executable cases; readiness is not a conformance pass.
+Implementation complete. All C01–C30 requirements passed **three consecutive
+clean full conformance rounds** in [run 42232080329](https://github.com/pichi-vm/madrillo/actions/runs/42232080329).
+The tested sources are Madrillo `defe4b7468d0e1f7c7c22c793f254d52ae73a2a4`
+and Pichi `b8ddfbd3b45be53a0a067b72119866ade1cbe8bc`. The completion record is
+a documentation-only follow-up; runtime code, tests, tools, dependency pins and
+workflow definitions remain the qualified implementation.
 
-Madrillo CI now uses public Ubuntu, macOS and Windows runners only, as directed
-by the user on November 6. It neither checks out Dillo nor boots a Dillo VM.
-Guest build toolchains, hugepage reservations and self-hosted runner requirements
-are removed. Pichi/Dillo repository workflows are unchanged and will not be
-manually dispatched for this task. See the [public CI review](reviews/06-public-ci.md).
+The [final audit](reviews/07-completion.md) verifies all nine native reports,
+186 command logs, nine distribution archives and the ledger streak of 1, 2, 3.
+The `conformance-evidence` artifact includes each round's reports and logs.
+Local copies of the verified reports, logs, ledger and requirement audit are
+retained in the ignored `conformance-runs` output directory. These are final
+evidence artifacts, separate from task scratch files, which have been removed.
 
-Ordinary native processes test cooperative monitor-loss cleanup with empty and
-backpressured stdin, including clean helper shutdown. The real Pichi build CLI
-also launches an ordinary fixture that checks guest-first CBOR over the original
-inherited pipes and preserves mount arguments. It deliberately exits 37 after
-the exchange; this is host contract evidence, not a guest build. Both new cases
-passed focused qualification on all three public hosts at `610fb555`:
-[native run](https://github.com/pichi-vm/madrillo/actions/runs/42226712804),
-[caller run](https://github.com/pichi-vm/madrillo/actions/runs/42226735473).
+Madrillo CI uses public Ubuntu, macOS and Windows runners with ordinary child
+processes. It does not check out or execute Dillo, require hardware virtualization,
+or dispatch Pichi/Dillo VM workflows. The real Pichi build CLI verifies the direct
+guest-first CBOR channel and inherited port/mount arguments without booting a guest.
+See the [CI scope review](reviews/06-public-ci.md).
 
-The [first public full run](https://github.com/pichi-vm/madrillo/actions/runs/42227473524)
-passed all fourteen Windows cases in each of its three rounds. macOS completed
-all eighteen cases per round but failed the new backpressured monitor-loss case;
-the broader termination filter also selects that case. Linux evidence is still
-pending. No complete cross-platform round counts as clean.
+The shared library is types-only and serde-only with `forbid(unsafe_code)`.
+The executable denies unsafe code except in its single approved private Windows
+OS boundary. Native exact inheritance, Job/ConPTY composition, scope cleanup and
+terminal control pass. The approved macOS process-group contract remains in force:
+workloads keep helpers in the managed group and own any deliberate escape.
 
-The monitor-loss fixture used a five-second workload timeout while filling the
-input pipe. A local slow-input reproduction confirms this can force the workload
-before the test kills Madrillo. That fixture now allows thirty seconds for setup
-and checks that the monitor has not completed before crash injection. The actual
-post-crash cleanup deadline remains five seconds, with leader/helper clean-exit
-markers and no fabricated result still required. Local control tests and strict
-Linux/Windows-target Clippy pass. Updated ordinary native qualification passes
-on all three public hosts at `506ab63` in [run 42230790498](https://github.com/pichi-vm/madrillo/actions/runs/42230790498).
-The separately selected full cases still require native retesting. Production
-code is unchanged. Conformance instructions now reflect the public-runner scope, and
-README includes foreground launch examples.
+Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) and Dillo
+[PR #92](https://github.com/pichi-vm/dillo/pull/92) contain the integration changes.
+Pichi incorporates current main and remains mergeable. Dillo's console-loss
+shutdown is its default. Existing Pichi/Dillo repository CI is separate from
+Madrillo's completed public-runner gate. No integration PR has been merged.
 
-The shared library remains serde-only with `forbid(unsafe_code)`. The executable
-denies unsafe code except in its single user-approved private Windows OS-boundary
-module. Production revision `0e860df` composes exact handle inheritance, Job
-membership and ConPTY, observes complete scope cleanup, and restores inherited
-Ctrl-C handling. Native Linux/macOS/Windows qualification and RPM packaging pass
-at `cebb9a7`: [native run](https://github.com/pichi-vm/madrillo/actions/runs/42222530272),
-[RPM run](https://github.com/pichi-vm/madrillo/actions/runs/42222530059).
-The CI/fixture changes above do not change production behavior.
-
-Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) remains draft pending
-three complete public-runner conformance rounds. Its current pin `b8ddfbd3`
-resolves the conflict with current Pichi main, preserving the plain appliance
-console, network and image-display fixes. The shared launcher already preserves
-the new RUST_LOG default and explicit values. Local caller qualification passes,
-including 149 unit tests, CLI operations, guest-first exchange and crash recovery.
-The full run at `506ab63` used the preceding Pichi pin and must be superseded.
-The new pin retains the cross-platform build-channel test and corrected native
-Windows launcher and Madrillo executable pin `0e860df`. Caller qualification
-uses actual CLI operations and ordinary child processes, including native
-Windows console/Job loss. The guest/build/resize APIs remain direct Pichi–child
-contracts.
-
-Dillo [PR #92](https://github.com/pichi-vm/dillo/pull/92) remains green and ready
-for review. Console-loss shutdown is its default; its existing VM evidence is
-separate from Madrillo CI. The settled macOS process-group contract is unchanged:
-workloads keep helpers in the managed group and own shutdown of any deliberate
-escape. No integration PR has been merged.
-
-[Madrillo is public](https://github.com/pichi-vm/madrillo). Task-owned scratch
-checkouts were removed; ordinary Cargo caches remain. Historical upstream API
-drafts were never sent. Three fresh native rounds on unchanged sources, with
-complete command logs and a verified ledger, remain the completion gate.
+[Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
+API request drafts were never sent. The remaining actions are the user's normal
+integration review and merge decisions.
 
 ## Historical qualification notes
 
