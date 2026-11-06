@@ -1,0 +1,14 @@
+Source: madrillo
+Section: utils
+Priority: optional
+Maintainer: Nathaniel McCallum <nathaniel@mccallum.life>
+Build-Depends: debhelper-compat (= 13), cargo (>= 1.91) | cargo-1.91, rustc (>= 1.91) | rustc-1.91
+Standards-Version: 4.7.2
+Homepage: https://github.com/pichi-vm/madrillo
+Rules-Requires-Root: no
+
+Package: madrillo
+Architecture: amd64 arm64
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: native process monitor for persistent workloads
+ Madrillo supervises native processes and their lifecycle.
