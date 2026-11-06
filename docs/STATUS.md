@@ -897,3 +897,10 @@ bare-library/safety audit and C29's native distribution. The default Cargo graph
 is checked explicitly for serde-only direct normal/build dependencies, empty
 default features and `forbid(unsafe_code)` on every owned target. Remaining
 requirements still gate full conformance; readiness is not a completed pass.
+
+The Linux v1 VM step now passes in native CI at `548e6b5`. An additional local
+v1/v2 regression moves the workload into a separate test-owned cgroup and removes
+the monitored group. It verifies that the removal notification is not fabricated
+as OOM, the real leader exit is retained, and missing scope observation is reported
+as incomplete. Both real v2 and disposable-VM v1 runs pass; temporary scopes,
+build products and VM files were removed.

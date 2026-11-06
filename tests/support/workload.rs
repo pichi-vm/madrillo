@@ -395,6 +395,15 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             Ok(0)
         }
         #[cfg(target_os = "linux")]
+        Some("remove-cgroup") => {
+            let original = std::path::Path::new(args.get(1).ok_or("original cgroup missing")?);
+            let replacement =
+                std::path::Path::new(args.get(2).ok_or("replacement cgroup missing")?);
+            std::fs::write(replacement.join("cgroup.procs"), b"0")?;
+            std::fs::remove_dir(original)?;
+            Ok(0)
+        }
+        #[cfg(target_os = "linux")]
         Some("bounded-oom") => {
             // Caller must install a private 32MiB cgroup limit; never stress
             // unbounded host memory even if a test setup is incorrect.

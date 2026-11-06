@@ -36,28 +36,29 @@ def scope():
     try:
         yield path
     finally:
-        if not legacy:
-            (path / "cgroup.kill").write_text("1")
-        deadline = time.monotonic() + 5
-        while populated(path):
-            if time.monotonic() >= deadline:
-                raise RuntimeError(f"test scope did not empty: {path}")
-            if legacy:
-                for group in [path, *(p for p in path.rglob("*") if p.is_dir())]:
-                    for number in (group / "cgroup.procs").read_text().split():
-                        try:
-                            fd = os.pidfd_open(int(number))
+        if path.exists():
+            if not legacy:
+                (path / "cgroup.kill").write_text("1")
+            deadline = time.monotonic() + 5
+            while populated(path):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError(f"test scope did not empty: {path}")
+                if legacy:
+                    for group in [path, *(p for p in path.rglob("*") if p.is_dir())]:
+                        for number in (group / "cgroup.procs").read_text().split():
                             try:
-                                signal.pidfd_send_signal(fd, signal.SIGKILL)
-                            finally:
-                                os.close(fd)
-                        except ProcessLookupError:
-                            pass
-            time.sleep(0.01)
-        for child in sorted((p for p in path.rglob("*") if p.is_dir()),
-                            key=lambda p: len(p.parts), reverse=True):
-            child.rmdir()
-        path.rmdir()
+                                fd = os.pidfd_open(int(number))
+                                try:
+                                    signal.pidfd_send_signal(fd, signal.SIGKILL)
+                                finally:
+                                    os.close(fd)
+                            except ProcessLookupError:
+                                pass
+                time.sleep(0.01)
+            for child in sorted((p for p in path.rglob("*") if p.is_dir()),
+                                key=lambda p: len(p.parts), reverse=True):
+                child.rmdir()
+            path.rmdir()
 
 
 def run(root, group, mode, args=(), flags=(), success=True):
@@ -111,6 +112,13 @@ with scope() as group, tempfile.TemporaryDirectory() as tmp:
     assert result["oom"]["type"] == "observed" and result["oom"]["kills"] >= 1, result
     assert result["oom"]["events"] >= 1, result
 
+with scope() as group, scope() as replacement, tempfile.TemporaryDirectory() as tmp:
+    result = run(Path(tmp), group, "remove-cgroup", [group, replacement])
+    assert result["leader"] == {"type": "exit", "code": 0}, result
+    assert result["oom"]["type"] == "unavailable", result
+    assert result["cleanup"]["type"] == "incomplete", result
+    assert not group.exists(), "fixture did not remove the monitored cgroup"
+
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
     fake = root / "fake-cgroup"
@@ -121,4 +129,4 @@ with tempfile.TemporaryDirectory() as tmp:
     assert result["leader"]["type"] == "spawn_failed", result
     assert (fake / "cgroup.kill").read_text() == "sentinel"
 
-print(f"cgroup v{1 if legacy else 2} qualification: pre-exec placement + escaped descendants with pipe/PTY; bounded OOM evidence; fake-filesystem rejection passed", flush=True)
+print(f"cgroup v{1 if legacy else 2} qualification: pre-exec placement + escaped descendants with pipe/PTY; bounded OOM evidence; removal is not OOM; fake-filesystem rejection passed", flush=True)
