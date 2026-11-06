@@ -48,6 +48,9 @@ jobs:
       - name: Native systemd notification relay and attribution
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_notify.py target/debug/madrillo target/debug/madrillo-fixture
+      - name: Native syslog diagnostics and workload separation
+        if: runner.os == 'Linux'
+        run: sudo python3 tools/check_diagnostics.py target/debug/madrillo target/debug/madrillo-fixture
       - name: Monitor OOM protection and workload restoration
         if: runner.os == 'Linux'
         run: |

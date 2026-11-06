@@ -27,7 +27,31 @@ inheritable access to the invoking user (SYSTEM/Administrators are also
 trusted). Madrillo validates that parent before creating state; it rejects a
 shared parent instead of exposing retained data during an ACL update.
 
+The caller must give the monitor an independent native lifetime. On Windows,
+Pichi requests `CREATE_BREAKAWAY_FROM_JOB`; a containing Job must permit that
+operation. A launch that is denied does not fall back to keeping the monitor
+inside the caller's Job. The current hosted Windows runner denies breakaway
+under both Bash and PowerShell; caller qualification also exercises a separate
+test host outside that Job. This remains an open qualification requirement.
+
 Unix listeners check each connecting process's effective UID against the
 monitor's user before accepting requests or delivering output. This also
 protects custom socket paths on hosts that do not enforce socket permission
 bits. An inherited initial connection remains a caller-transferred capability.
+
+Monitor diagnostics go to stderr. `--log-level` defaults to `warn`, with
+`error`, `info`, `debug`, and `trace` also supported. Names are case-insensitive;
+conmon's `warning`, `fatal`, and `panic` aliases are accepted. Unix `--syslog`
+additionally sends diagnostics to the local syslog service as `madrillo`, with
+the monitor's PID and user facility. Severity follows the selected message
+level (trace uses syslog debug). Workload logging remains configured separately
+by `--log-path`; workload bytes are never sent through the diagnostic logger.
+With passthrough, both monitor diagnostics and workload stderr use the caller's
+stderr; `--log-level error` suppresses non-error monitor messages there.
+
+Diagnostics use one worker with 32 queued messages, each limited to 2 KiB plus
+a truncation marker. A blocked sink cannot stop supervision. After workload
+teardown, flushing waits at most 250 ms; dropped messages, sink failures, and
+an expired flush deadline are recorded in `result.json`. Diagnostics remain
+best effort across monitor loss. Errors after result publication, such as an
+exit-command failure, cannot rewrite the workload result.

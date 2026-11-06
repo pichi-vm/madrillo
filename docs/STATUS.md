@@ -585,3 +585,28 @@ uses the preconnected inherited channel and requires native Job breakaway.
 There is no fallback that leaves monitor lifetime under the caller's Job, and
 no production WMI broker. Results from this new test context are pending; a
 successful run will not by itself prove every C04 lifetime scenario.
+
+Dillo's unchanged `a75f0e3` source now passes all native VM and console checks.
+The first Linux x86 attempt had 15 boot timeouts; the retry passed, with no
+source change and no established root cause. [PR 92](https://github.com/pichi-vm/dillo/pull/92)
+is ready for review. This does not supply the still-missing macOS/Windows
+monitor-crash VM evidence. The earlier notification failure qualification also
+passed the three-host monitor CI at `2b8db07`.
+
+C25 diagnostic support now implements conmon's warning default, case-insensitive
+levels and aliases, plus Unix `--syslog`. The executable-only syslog dependency
+uses the local native service; the bare library still has only serde. Diagnostic
+messages never enter workload logs. Unlike conmon's nonfatal LOG_INFO mapping,
+syslog priorities reflect each message's severity (trace maps to debug).
+
+One bounded worker isolates diagnostic I/O. It holds at most 32 queued records
+of 2 KiB plus a truncation marker; formatting is bounded before enqueueing.
+After teardown, a 250 ms flush deadline records delivery failure without
+delaying result publication indefinitely. Strict Clippy and all 52 current
+local tests pass, with the existing explicit journal qualification still ignored
+by the ordinary test command. New native fixtures cover thresholds and aliases,
+fatal/invalid-level behavior, workload-log separation, UTF-8 truncation, and a
+full stderr socket during timeout. Real Linux syslog delivery passes with PID,
+facility, priority and workload separation verified through journal records.
+The new syslog check is wired into Linux CI; native results for this revision
+remain pending. Full C01-C30 conformance remains zero.

@@ -3,6 +3,7 @@ mod activation;
 #[cfg(target_os = "linux")]
 mod cgroup;
 mod connections;
+mod diagnostics;
 mod framing;
 mod input;
 #[cfg(unix)]
@@ -20,6 +21,7 @@ mod terminal;
 mod transport;
 use clap::Parser;
 use connections::Connections;
+use diagnostics::{Diagnostics, Level};
 use input::Input;
 use logging::{
     Capture,
@@ -110,6 +112,13 @@ struct Cli {
     log_max_files: u16,
     #[arg(long)]
     no_sync_log: bool,
+    /// Monitor diagnostic threshold: error, warn, info, debug, or trace.
+    #[arg(long, default_value = "warn")]
+    log_level: Level,
+    /// Also send monitor diagnostics to the local Unix syslog service.
+    #[cfg(unix)]
+    #[arg(long)]
+    syslog: bool,
     /// Relay allowed service notifications to this systemd socket (Linux).
     #[arg(long)]
     sdnotify_socket: Option<OsString>,
@@ -141,12 +150,30 @@ fn main() -> ExitCode {
             Err(_) => ExitCode::FAILURE,
         };
     }
-    match run(Cli::parse()) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(error) => {
-            let _ = writeln!(io::stderr().lock(), "madrillo: {error}");
-            ExitCode::FAILURE
+    let cli = Cli::parse();
+    let level = cli.log_level;
+    #[cfg(unix)]
+    let syslog = cli.syslog;
+    #[cfg(not(unix))]
+    let syslog = false;
+    let mut diagnostics = None;
+    let result = run(cli, &mut diagnostics);
+    if let Err(error) = &result {
+        if diagnostics.is_none() {
+            diagnostics = Diagnostics::start(level, syslog).ok();
         }
+        if let Some(diagnostics) = &mut diagnostics {
+            diagnostics.emit(Level::Error, format_args!("{error}"));
+        }
+    }
+    let diagnostic_errors = diagnostics
+        .as_mut()
+        .map(Diagnostics::flush)
+        .unwrap_or_default();
+    if result.is_ok() && diagnostic_errors.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 
@@ -183,7 +210,7 @@ fn log_file_path(value: &std::ffi::OsStr) -> io::Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
+fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn std::error::Error>> {
     if cli.api_version {
         writeln!(io::stdout().lock(), "{PROTOCOL_VERSION}")?;
         return Ok(());
@@ -212,6 +239,15 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         .chain(capture_specs.iter().map(|spec| spec.number))
         .collect();
     let mut held = resources::adopt(&numbers)?;
+    #[cfg(unix)]
+    let syslog = cli.syslog;
+    #[cfg(not(unix))]
+    let syslog = false;
+    *diagnostics = Some(Diagnostics::start(cli.log_level, syslog)?);
+    let diagnostics = diagnostics
+        .as_mut()
+        .ok_or("diagnostics worker unavailable")?;
+    diagnostics.emit(Level::Debug, format_args!("preparing workload"));
     let initial = cli
         .control
         .and_then(|number| held.remove(&number))
@@ -282,6 +318,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
         &mut result,
         activation.as_ref(),
         extra,
+        diagnostics,
         #[cfg(unix)]
         original_oom_score,
         #[cfg(unix)]
@@ -298,6 +335,20 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     }
     drop(held);
     connections.close_listener();
+    for warning in &result.monitor_warnings {
+        diagnostics.emit(Level::Warn, format_args!("{warning}"));
+    }
+    for error in result.monitor_errors.iter().chain(&result.log_errors) {
+        diagnostics.emit(Level::Error, format_args!("{error}"));
+    }
+    diagnostics.emit(
+        Level::Info,
+        format_args!(
+            "workload completed: {:?}; leader {:?}; cleanup {:?}",
+            result.cause, result.leader, result.cleanup
+        ),
+    );
+    result.monitor_errors.extend(diagnostics.flush());
     state.publish(&result)?;
     connections.broadcast(ServerMessage::Completed { result })?;
     let deadline = Instant::now() + Duration::from_secs(1);
@@ -317,7 +368,7 @@ fn run(cli: Cli) -> Result<(), Box<dyn std::error::Error>> {
     if let Err(error) = &callback
         && supervised.is_err()
     {
-        let _ = writeln!(io::stderr(), "madrillo: {error}");
+        diagnostics.emit(Level::Error, format_args!("{error}"));
     }
     supervised?;
     callback
@@ -374,12 +425,17 @@ fn unix_ms() -> u64 {
         .unwrap_or(0)
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Explicit native launch resources and supervisor-owned state"
+)]
 fn supervise(
     cli: &Cli,
     connections: &mut Connections,
     result: &mut Completion,
     activation: Option<&activation::Activation>,
     extra: Vec<(String, logging::extra::Reader)>,
+    diagnostics: &mut Diagnostics,
     #[cfg(unix)] original_oom_score: Option<i32>,
     #[cfg(unix)] inherited: Vec<command_fds::FdMapping>,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -536,6 +592,10 @@ fn supervise(
             monitor_pid: std::process::id(),
         },
     )?;
+    diagnostics.emit(
+        Level::Trace,
+        format_args!("endpoint, logs and native launch resources prepared"),
+    );
     if cli.start_gated
         && !await_start(
             connections,
@@ -567,6 +627,10 @@ fn supervise(
     )?;
     result.cause = CompletionCause::MonitorFailure;
     let started = Instant::now();
+    diagnostics.emit(
+        Level::Info,
+        format_args!("workload started: leader {}", child.id()),
+    );
     // Keep the sole console writer alive with zero clients.
     let workers = (|| -> io::Result<()> {
         for (index, (_, reader)) in extra.into_iter().enumerate() {
