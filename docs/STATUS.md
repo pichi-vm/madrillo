@@ -5,6 +5,22 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
 C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
 
+Pichi `fc5b019b` adds an explicit native Windows CLI terminal case: real
+`run`/`attach` inside ConPTY, initial size and resize, raw input, detach,
+reattachment, initially detached startup, cooperative stop, and native input-mode
+restoration in the same console. The qualification harness requires its success
+marker; native execution is pending. Local Linux run and packaging tests pass.
+The test host is a development dependency and adds no product launch fallback.
+Compiled stub fixtures now release their temporary build directory immediately.
+
+Pichi's host-packaging patch is fixed in `ecb56fdb`; it retains the now-runtime
+`dillo-config` dependency. Dillo `d39ab98` integrates main's explicit device-bus
+contract. Local native resize, console EOF, buffered-input monitor crash, unit,
+CLI and strict Clippy checks pass after updating fixture arguments. Pichi still
+pins Dillo `7030527`: adopting the new Dillo requires resolving image transport
+preferences into explicit per-device placements on the caller side. The two
+component qualification pins do not yet prove an integrated final product.
+
 Console resize now has a direct Pichi–Dillo implementation. Pichi sends the
 interactive terminal's dimensions at startup, on change, and after reattachment;
 Dillo forwards the latest size through virtio-console control messages. Madrillo
@@ -22,7 +38,7 @@ complete native Pichi/VM/build path. C26 remains pending. Pichi `e689b0c8` adds
 cleanup of a Unix resize socket left by abrupt child exit: only confirmed
 complete workload cleanup permits removal. Local caller, build/run/storage,
 native launch and monitor-crash cases pass; native qualification of this follow-up
-is pending. An additional strict Pichi Clippy run reports existing warnings in
+[passes on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42182463085). An additional strict Pichi Clippy run reports existing warnings in
 build, storage and configuration code; no strict-Clippy pass is claimed.
 
 The focused Dillo qualification now requires four real VM cases, adding guest

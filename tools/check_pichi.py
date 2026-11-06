@@ -49,7 +49,8 @@ def main():
                 *(f"cmd::workload::tests::{name}" for name in native),
                 "1 passed; 0 failed; 0 ignored;",
                 crash, "native Windows caller loss passed (console=false)",
-                "native Windows caller loss passed (console=true)"])
+                "native Windows caller loss passed (console=true)",
+                "native Windows CLI terminal: run, input, resize, detach, reattach, detached start and stop passed"])
     else:
         cargo = ["cargo", "+nightly-2026-07-06", "test", "--locked", "-p", "pichi"]
         run([*cargo, "--lib", "--test", "cmd_workload", "--test", "cmd_build",

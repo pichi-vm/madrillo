@@ -1251,11 +1251,11 @@
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "e689b0c8628d9cb3c889069a1ca7b496bf475f76"
+      "revision": "fc5b019b9912805ed31251e1d33b5ccc6765b37c"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
-      "revision": "70305271cdb6bb54e165897b87c0e44c91ea4d90"
+      "revision": "d39ab989615771e6663ea0fc4e1a19c8b9252181"
     }
   }
 }

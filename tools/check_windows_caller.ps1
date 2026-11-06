@@ -87,6 +87,13 @@ try {
         arguments = @('cmd::workload::tests::job::caller_loss_preserves_workload', '--exact', '--ignored', '--nocapture')
         required = 'cmd::workload::tests::job::caller_loss_preserves_workload'
     }
+    $run = @($artifacts | Where-Object { $_.target.name -eq 'cmd_run' })
+    if ($run.Count -ne 1) { throw 'Cannot identify the run CLI test executable' }
+    $tests += @{
+        executable = $run[0].executable
+        arguments = @('windows_terminal::interactive_resize_input_and_reattach', '--exact', '--ignored', '--nocapture')
+        required = 'windows_terminal::interactive_resize_input_and_reattach'
+    }
     @{
         environment = $environment
         directory = $directory
