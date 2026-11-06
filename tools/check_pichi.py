@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify the native caller and reconciliation; real VM/build cases are separate."""
+"""Qualify the native caller and opaque build channel using ordinary processes."""
 import json
 import os
 from pathlib import Path
@@ -76,6 +76,11 @@ def main():
             for loss in ("exit", "crash", "hangup")])
     run([*cargo, "--lib", "--test", "cmd_workload", "--test", "cmd_build",
          "--test", "cmd_run", "--test", "cmd_rmi"], pichi, environment, markers)
+    run([*cargo, "--test", "cmd_run", "build_channel_preserves_guest_first_exchange",
+         "--", "--exact", "--ignored", "--nocapture"], pichi, environment,
+        ["test build_channel_preserves_guest_first_exchange ... ok",
+         "1 passed; 0 failed; 0 ignored;",
+         "native build channel: direct inherited pipes, guest-first CBOR and mount arguments preserved"])
     for name in native:
         test = "cmd::workload::tests::" + name
         evidence = [crash] if name.startswith("monitor_crash") else []

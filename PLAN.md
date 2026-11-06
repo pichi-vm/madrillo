@@ -64,7 +64,7 @@ behavior, ignored test, absent runner, or unimplemented path is not a pass.
 | C21 | Monitor OOM protection | Attempt permitted protection; failure visible; protection not inherited by workload or exit helper |
 | C22 | Held resources and cleanup | Monitor-only reservations retained then released before final notification; endpoints cleaned; retained state remains readable |
 | C23 | Exit command | Native command/args/delay, no shell, no resource leaks; caller policy independent of original CLI; failure does not replace workload exit |
-| C24 | Monitor loss | Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup |
+| C24 | Monitor loss | Console ownership disappears on monitor loss, including backpressured input; cooperative workloads can clean up their helpers before exit without an immediate OS kill |
 | C25 | Protocol and diagnostics | Fixed version, checked lengths/allocations, bounded malformed input; private native endpoint/ACL; separate diagnostics/log levels/native syslog where applicable; CLI help/version/API identity |
 | C26 | Pichi integration | Shared run/build launch, run/attach/logs/wait/stop, IDs/discovery/prune protection, terminal restore/detach/resize semantics |
 | C27 | Locked build channel | Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged |
@@ -181,7 +181,8 @@ only its documented allowlist; dillo/build API traffic stays direct.
 7. **Pichi/dillo integration:** use isolated branches/worktrees to preserve
    unrelated changes. Integrate shared run/build path and user operations;
    implement full-buffer monitor-loss cleanup and helper coordination. Exit:
-   generic monitor tests plus existing platform VM/build checks; no new guest API.
+   generic monitor and native caller/build-channel fixtures; no new guest API.
+   Dillo's VM checks belong to its repository, outside Madrillo CI.
 8. **Release conformance:** finish docs/examples/licenses/package checks, audit
    all C01-C30 evidence, run the complete suite and native matrix repeatedly.
    Fix every finding and reset the streak on any change or failure. Exit only
@@ -209,7 +210,17 @@ approvals without independent checks do not satisfy this instruction.
 Maintain a machine-readable requirement/evidence manifest and an executable
 runner. Each full pass includes format, warning-clean checks/clippy, minimal-lib
 dependency/public-surface audit, unit/integration/failure tests, conmon reference
-fixtures, native Linux/macOS/Windows execution, and pichi/dillo integration.
+fixtures, native Linux/macOS/Windows execution, and Pichi caller integration.
+On 2026-11-06 the user required public runners only for Madrillo CI and excluded
+Dillo/VM workload tests. Use ordinary native child processes for console loss,
+helper cleanup, caller lifetime and opaque build-port exchange. Pichi's real
+run/build CLI still uses the production monitor; its fixture checks exact
+guest-first CBOR bytes, inherited pipes and unchanged mount arguments without
+booting a guest. This is host contract evidence, not VM/build execution evidence.
+Do not dispatch Pichi or Dillo VM workflows for this task. Their existing
+repository workflows and Dillo's console-loss implementation remain separate.
+Linux's disposable cgroup-v1 kernel fixture uses QEMU's CPU emulator when KVM
+is unavailable; it introduces no Dillo or hardware-virtualization prerequisite.
 Record source revision/digest, OS/toolchain, test commands, status, and artifacts.
 Pin or build the reference conmon used by differential tests; the installed
 host version is not automatically the reference revision. Normalize timestamps,

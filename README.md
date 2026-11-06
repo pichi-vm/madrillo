@@ -14,6 +14,11 @@ OS boundary, approved to compose exact handle inheritance, Jobs and ConPTY.
 See the [boundary review](docs/reviews/04-windows-boundary.md). Pichi and dillo
 are the first integration, while the monitor remains independent of VM APIs.
 
+CI uses public Linux, macOS and Windows runners with ordinary child-process
+fixtures. It does not build or execute the Dillo VM binary or require hardware virtualization.
+Pichi's caller and build-channel contracts are checked through the real CLI
+without booting a guest. See the [CI scope review](docs/reviews/06-public-ci.md).
+
 On Linux, Madrillo becomes a subreaper before launching the workload. After
 leader termination it adopts, terminates and reaps remaining descendants,
 including helpers in different groups or sessions. It validates child ownership

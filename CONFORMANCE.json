@@ -393,11 +393,10 @@
     {
       "id": "C24",
       "behavior": "Monitor loss",
-      "criterion": "Dillo cooperative cleanup via existing console loss, including full buffers; helpers accounted for; no immediate OS kill preempts cleanup",
+      "criterion": "Console ownership disappears on monitor loss, including backpressured input; cooperative workloads can clean up their helpers before exit without an immediate OS kill",
       "status": "ready",
       "tests": [
-        "native-dillo-console-unix",
-        "native-dillo-console-windows"
+        "native-monitor-loss"
       ],
       "evidence": [],
       "hosts": [
@@ -432,11 +431,7 @@
       "status": "ready",
       "tests": [
         "native-pichi-caller-unix",
-        "native-pichi-caller-windows",
-        "native-dillo-console-unix",
-        "native-dillo-console-windows",
-        "native-pichi-vm-unix",
-        "native-pichi-vm-windows"
+        "native-pichi-caller-windows"
       ],
       "evidence": [],
       "hosts": [
@@ -451,8 +446,8 @@
       "criterion": "Original inherited named-port pipes, existing command-versioned CBOR request/response, guest-first ordering, virtiofs repo/cache/output remain unchanged",
       "status": "ready",
       "tests": [
-        "native-pichi-vm-unix",
-        "native-pichi-vm-windows"
+        "native-pichi-caller-unix",
+        "native-pichi-caller-windows"
       ],
       "evidence": [],
       "hosts": [
@@ -1194,49 +1189,6 @@
       ]
     },
     {
-      "id": "native-dillo-console-unix",
-      "hosts": [
-        "linux",
-        "macos"
-      ],
-      "kind": "test",
-      "command": [
-        "python3",
-        "tools/check_dillo.py",
-        "target/debug/madrillo",
-        ".qualification/components/dillo"
-      ],
-      "timeout": 1800,
-      "success_markers": [
-        "console lifetime observed with ",
-        "madrillo crash: unread guest console input stayed backpressured",
-        "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
-        "native VM resize: initial size, reconnect, rows/columns, cooperative zero exit",
-        "native Dillo console lifetime and resize: four real VM cases passed"
-      ]
-    },
-    {
-      "id": "native-dillo-console-windows",
-      "hosts": [
-        "windows"
-      ],
-      "kind": "test",
-      "command": [
-        "python3",
-        "tools/check_dillo.py",
-        "target/debug/madrillo.exe",
-        ".qualification/components/dillo"
-      ],
-      "timeout": 1800,
-      "success_markers": [
-        "console lifetime observed with ",
-        "madrillo crash: unread guest console input stayed backpressured",
-        "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
-        "native VM resize: initial size, reconnect, rows/columns, cooperative zero exit",
-        "native Dillo console lifetime and resize: four real VM cases passed"
-      ]
-    },
-    {
       "id": "native-pichi-caller-unix",
       "hosts": [
         "linux",
@@ -1253,7 +1205,9 @@
       "success_markers": [
         "native monitor crash: unknown state and cleanup inputs retained",
         "native Pichi caller and crash reconciliation passed",
-        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok"
+        "test caller_lifetime::caller_loss_preserves_pipe_and_terminal ... ok",
+        "test build_channel_preserves_guest_first_exchange ... ok",
+        "native build channel: direct inherited pipes, guest-first CBOR and mount arguments preserved"
       ]
     },
     {
@@ -1276,7 +1230,9 @@
         "native placement: terminal=false, early leader/helper membership and outside exit helper passed",
         "native placement: terminal=true, early leader/helper membership and outside exit helper passed",
         "test native_placement_precedes_workload_and_helpers ... ok",
-        "native Pichi exact inheritance: opaque bytes, excluded handle and EOF passed"
+        "native Pichi exact inheritance: opaque bytes, excluded handle and EOF passed",
+        "test build_channel_preserves_guest_first_exchange ... ok",
+        "native build channel: direct inherited pipes, guest-first CBOR and mount arguments preserved"
       ]
     },
     {
@@ -1328,47 +1284,6 @@
       ]
     },
     {
-      "id": "native-pichi-vm-unix",
-      "hosts": [
-        "linux",
-        "macos"
-      ],
-      "kind": "test",
-      "command": [
-        "python3",
-        "tools/check_pichi_vm.py",
-        "target/debug/madrillo",
-        ".qualification/components/pichi"
-      ],
-      "timeout": 15000,
-      "success_markers": [
-        "native VM suite passed: pichi_build_boots_official_image_to_poweroff",
-        "native VM suite passed: pichi_build_checks_committed_submodule_stores",
-        "native VM suite passed: staged_images_create_extend_and_compose",
-        "native Pichi VM/build: three real build-and-boot suites passed"
-      ]
-    },
-    {
-      "id": "native-pichi-vm-windows",
-      "hosts": [
-        "windows"
-      ],
-      "kind": "test",
-      "command": [
-        "python3",
-        "tools/check_pichi_vm.py",
-        "target/debug/madrillo.exe",
-        ".qualification/components/pichi"
-      ],
-      "timeout": 15000,
-      "success_markers": [
-        "native VM suite passed: pichi_build_boots_official_image_to_poweroff",
-        "native VM suite passed: pichi_build_checks_committed_submodule_stores",
-        "native VM suite passed: staged_images_create_extend_and_compose",
-        "native Pichi VM/build: three real build-and-boot suites passed"
-      ]
-    },
-    {
       "id": "native-windows-inheritance",
       "hosts": [
         "windows"
@@ -1413,16 +1328,40 @@
         "test invalid_claim_cannot_become_valid_during_duplication ... ok",
         "test held_reservation_is_released_before_exit_command ... ok"
       ]
+    },
+    {
+      "id": "native-monitor-loss",
+      "hosts": [
+        "linux",
+        "macos",
+        "windows"
+      ],
+      "kind": "test",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--all-features",
+        "--test",
+        "control",
+        "monitor_loss_allows_cooperative_cleanup_with_unread_input",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "timeout": 60,
+      "success_markers": [
+        "test monitor_loss_allows_cooperative_cleanup_with_unread_input ... ok",
+        "cooperative monitor loss: blocked=false, leader and helper cleaned up",
+        "cooperative monitor loss: blocked=true, leader and helper cleaned up",
+        "1 passed; 0 failed; 0 ignored;"
+      ]
     }
   ],
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "993d7943663244d338b1bf1bc06a0912725367c9"
-    },
-    "dillo": {
-      "repository": "https://github.com/pichi-vm/dillo",
-      "revision": "88d507c8fb3c2c46c10298c07c572fa95ea307e1"
+      "revision": "5347d9a1db382f076bdccce676316a6d20f6e62b"
     }
   }
 }

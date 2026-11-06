@@ -1,5 +1,7 @@
 #![forbid(unsafe_code)]
+mod cooperative;
 mod placement;
+mod port_exchange;
 use std::{
     io::{self, Read, Write},
     process::{Command, ExitCode},
@@ -19,8 +21,17 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<i32, Box<dyn std::error::Error>> {
+    if std::env::var_os("MADRILLO_FIXTURE_PORT_EXCHANGE").is_some() {
+        return port_exchange::run();
+    }
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     match args.first().and_then(|s| s.to_str()) {
+        Some("cooperative-console") => cooperative::leader(std::path::Path::new(
+            args.get(1).ok_or("cleanup directory missing")?,
+        )),
+        Some("cooperative-helper") => cooperative::helper(std::path::Path::new(
+            args.get(1).ok_or("cleanup directory missing")?,
+        )),
         Some("scope-probe") => placement::probe(
             std::path::Path::new(args.get(1).ok_or("scope directory missing")?),
             args.get(2).is_some_and(|arg| arg == "terminal"),

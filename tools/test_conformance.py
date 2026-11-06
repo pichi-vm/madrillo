@@ -147,7 +147,7 @@ class NativeSourceIdentity(unittest.TestCase):
             subprocess.run(["git", "init", "--quiet", str(root)], check=True)
             (root / ".gitignore").write_text(".qualification/\n")
             pins = {}
-            for name in ("pichi", "dillo"):
+            for name in ("pichi",):
                 directory = root / ".qualification/components" / name
                 directory.mkdir(parents=True)
                 subprocess.run(["git", "init", "--quiet", str(directory)], check=True)

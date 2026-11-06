@@ -46,8 +46,8 @@ def checkout_identity(directory):
 def identity():
     source = checkout_identity(ROOT)
     components = json.loads((ROOT / "CONFORMANCE.json").read_text()).get("components", {})
-    if set(components) != {"pichi", "dillo"}:
-        raise ValueError("full conformance requires pinned Pichi and Dillo sources")
+    if set(components) != {"pichi"}:
+        raise ValueError("full conformance requires pinned Pichi caller sources")
     source["components"] = {}
     for name, pin in components.items():
         if not re.fullmatch(r"[0-9a-f]{40}", pin.get("revision", "")):

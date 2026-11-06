@@ -898,6 +898,64 @@ fn malformed_client_does_not_stop_monitor_or_other_clients()
 }
 
 #[test]
+fn monitor_loss_allows_cooperative_cleanup_with_unread_input()
+-> Result<(), Box<dyn std::error::Error>> {
+    for blocked in [false, true] {
+        let root = tempfile::tempdir()?;
+        let (mut monitor, mut client) = Monitor::initial_command(
+            &[
+                env!("CARGO_BIN_EXE_madrillo-fixture"),
+                "cooperative-console",
+                root.path().to_str().ok_or("test path is not UTF-8")?,
+            ],
+            false,
+            &["--stdin"],
+        )?;
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+        client.output_until(b"alive\n")?;
+        if blocked {
+            for _ in 0..8 {
+                client.send(ClientMessage::Input {
+                    bytes: vec![b'x'; 48 * 1024],
+                })?;
+            }
+            loop {
+                match client.next()? {
+                    ServerMessage::Output { .. } => {}
+                    ServerMessage::Error {
+                        code: ErrorCode::ResourceLimit,
+                        ..
+                    } => break,
+                    response => {
+                        return Err(format!("unexpected input response {response:?}").into());
+                    }
+                }
+            }
+        }
+        drop(client);
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(!root.path().join("leader-clean").exists());
+        monitor.child.kill()?;
+        let _ = monitor.child.wait()?;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !root.path().join("leader-clean").exists() {
+            if Instant::now() >= deadline {
+                return Err(
+                    format!("cooperative cleanup missed monitor loss; blocked={blocked}").into(),
+                );
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert_eq!(std::fs::read(root.path().join("helper-clean"))?, b"clean");
+        assert_eq!(std::fs::read(root.path().join("leader-clean"))?, b"clean");
+        assert!(!monitor._root.path().join("state/result.json").exists());
+        println!("cooperative monitor loss: blocked={blocked}, leader and helper cleaned up");
+    }
+    Ok(())
+}
+
+#[test]
 fn monitor_crash_does_not_promise_an_exit_callback() -> Result<(), Box<dyn std::error::Error>> {
     for completed in [false, true] {
         let root = tempfile::tempdir()?;

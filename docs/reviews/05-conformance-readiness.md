@@ -2,7 +2,8 @@
 
 This review establishes executable coverage, not a conformance pass. Native
 reports must still establish all thirty requirements three consecutive times
-on unchanged Madrillo, Pichi and Dillo sources.
+on unchanged Madrillo and Pichi sources. The later [public CI review](06-public-ci.md)
+supersedes the VM execution mappings below following the user's CI constraint.
 
 The approved Windows boundary removes both implementation gaps: opaque handles
 retain their numeric identities through native creation, and the owned Job
