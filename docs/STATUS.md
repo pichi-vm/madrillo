@@ -16,6 +16,16 @@ regression failed against the old hard-coded `/tmp` path and passes with this
 change; full local caller qualification and formatting pass. Madrillo's
 production implementation remains unchanged.
 
+The current Pichi candidate is `1712fd693bd2fcb3958b8c1848501188ce7174c2`.
+It incorporates main's explicit device-bus contract and removes the redundant
+fallback planner and its PMI-parser fixtures. Native checks now require main's
+explicit bus, storage and build-pipe assertions. The full local caller suite
+passes. Pichi's CI monitor builder now reads Madrillo's pinned toolchain instead
+of applying Pichi's nightly; a real local build and checkout cleanup passed.
+Run [42252826521](https://github.com/pichi-vm/madrillo/actions/runs/42252826521)
+was canceled before qualification finished because the newly conflicting Pichi
+branch required this merge and a new source pin.
+
 The follow-up run [42242142705](https://github.com/pichi-vm/madrillo/actions/runs/42242142705)
 passed all three Windows rounds and macOS rounds one and three. The macOS
 second round failed `blocked_child_input_cannot_hold_force_or_timeout`; Pichi's
@@ -71,14 +81,14 @@ terminal control pass. The approved macOS process-group contract remains in forc
 workloads keep helpers in the managed group and own any deliberate escape.
 
 Pichi [PR #154](https://github.com/pichi-vm/pichi/pull/154) incorporates current
-main and remains mergeable, with qualified Dillo pin `88d507c`. Dillo PR #92 has
-been closed in favor of [#101](https://github.com/pichi-vm/dillo/pull/101),
-[#102](https://github.com/pichi-vm/dillo/pull/102) and
-[#103](https://github.com/pichi-vm/dillo/pull/103). Their separate Windows boot
-suite currently fails the early-input acknowledgement case; the console-loss
-and resize cases pass. These replacement heads were not substituted for the
-qualified pins. See the completion review for the failure link. No VM workflow
-was dispatched or retried, and no integration PR has been merged.
+main, with qualified Dillo pin `88d507c`. Dillo stdin delivery
+[#101](https://github.com/pichi-vm/dillo/pull/101) has landed on main. Resize
+[#102](https://github.com/pichi-vm/dillo/pull/102) was replaced by
+[#105](https://github.com/pichi-vm/dillo/pull/105). Console-loss shutdown
+[#103](https://github.com/pichi-vm/dillo/pull/103) merged into the old resize
+branch, not main. Pichi retains its complete console integration pin rather
+than dropping resize or shutdown behavior. No VM workflow was dispatched or
+retried, and this session has not merged an integration PR.
 
 Pichi PR #154 is ready for review but its separate CI is **not fully green**.
 Its [macOS VM job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994038063)
@@ -87,7 +97,9 @@ The passing native launch test uses the runner's workspace `TMPDIR`, while
 Pichi previously hard-coded `/tmp`. Respecting `TMPDIR` fixes that discrepancy;
 the sandbox explanation remains a hypothesis until automatic VM CI verifies it.
 The [Linux ARM64 job](https://github.com/pichi-vm/pichi/actions/runs/42242041188/job/127994037922)
-has resumed after the runner reboot. Windows and Linux x86_64 jobs passed.
+resumed after the runner reboot, then hit a Rust nightly internal compiler
+error while compiling `nix` for the monitor. The builder now uses Madrillo's
+own pinned compiler as described above. Windows and Linux x86_64 jobs passed.
 These separate jobs were inspected read-only, without dispatching VM CI.
 
 [Madrillo is public](https://github.com/pichi-vm/madrillo). Historical upstream
