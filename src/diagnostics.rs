@@ -51,6 +51,11 @@ impl Diagnostics {
     // Call only after adopting inherited resources: logging may open descriptors.
     pub(crate) fn start(level: Level, syslog: bool) -> io::Result<Self> {
         let (sender, receiver) = mpsc::sync_channel(QUEUE);
+        // Initialize Apple's native logger before another thread can fork.
+        // libSystem's child-at-fork hook aborts if it inherits an in-progress
+        // notification subsystem initialization from the diagnostics worker.
+        #[cfg(target_os = "macos")]
+        let logger = syslog.then(|| oslog::OsLog::new("org.pichi.madrillo", "monitor"));
         thread::Builder::new()
             .name("diagnostics".into())
             .spawn(move || {
@@ -75,8 +80,6 @@ impl Diagnostics {
                 // Local socket writes bypass Apple's unified logging API.
                 // Keep its native filtering/delivery policy; submission is not
                 // an acknowledgement of durable storage by the system service.
-                #[cfg(target_os = "macos")]
-                let logger = syslog.then(|| oslog::OsLog::new("org.pichi.madrillo", "monitor"));
                 #[cfg(not(unix))]
                 let _ = syslog;
                 let mut stderr_failed = false;
