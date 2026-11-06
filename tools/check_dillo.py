@@ -21,7 +21,7 @@ def main():
     print(f"Dillo revision: {revision.strip()}; monitor: {monitor}", flush=True)
     unit = "liveness::tests::unread_pipe_input_does_not_hide_writer_loss"
     result = subprocess.run(
-        ["cargo", "+nightly-2026-07-06", "--config", "packaging/cargo-config.toml",
+        ["cargo", "+nightly-2026-07-06",
          "test", "--locked", "-p", "dillo-virtio-console", unit,
          "--", "--exact", "--nocapture"], cwd=dillo, check=False,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -41,7 +41,7 @@ def main():
          ["native VM resize: initial size, reconnect, rows/columns, cooperative zero exit"]),
     ]
     for test, ignored, markers in cases:
-        command = ["cargo", "+nightly-2026-07-06", "--config", "packaging/cargo-config.toml",
+        command = ["cargo", "+nightly-2026-07-06",
                    "test", "--locked", "-p", "dillo",
                    "--features", "vm-tests", "--test", "boot", test, "--", "--exact",
                    "--test-threads=1", "--nocapture"]

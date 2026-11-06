@@ -65,8 +65,6 @@ jobs:
           rustup toolchain install 1.94.0 --profile minimal
           rustup toolchain install nightly-2026-07-06 --profile minimal --component rust-src
           rustup target add --toolchain nightly-2026-07-06 x86_64-unknown-none aarch64-unknown-none "${{ matrix.guest }}"
-          mkdir -p dillo/.cargo
-          cp dillo/packaging/cargo-config.toml dillo/.cargo/config.toml
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
