@@ -23,8 +23,39 @@ def failure_context(state, stderr):
         "/usr/bin/log", "show", "--last", "1m", "--style", "ndjson",
         "--info", "--debug", "--predicate", 'eventMessage CONTAINS[c] "madrillo"',
     ], capture_output=True, timeout=15)
-    print(f"native failure context ({query.returncode}): {query.stdout[-32768:]!r}; "
-          f"{query.stderr[-8192:]!r}", flush=True)
+    print(f"native failure context ({query.returncode}):", flush=True)
+    for line in query.stdout.splitlines():
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if "eventMessage" in record:
+            print(record.get("timestamp"), record["eventMessage"], flush=True)
+    print(f"query stderr: {query.stderr[-8192:]!r}", flush=True)
+    deadline = time.monotonic() + 5
+    while True:
+        reports = list((Path.home() / "Library/Logs/DiagnosticReports").glob("madrillo*.ips"))
+        reports += list(Path("/Library/Logs/DiagnosticReports").glob("madrillo*.ips"))
+        if reports or time.monotonic() >= deadline:
+            break
+        time.sleep(0.1)
+    for path in sorted(reports, key=lambda path: path.stat().st_mtime)[-3:]:
+        text = path.read_text()
+        try:
+            # Apple's .ips format has a one-line JSON header followed by the
+            # complete JSON report. Retain the cause and faulting thread only.
+            header, report = text.split("\n", 1)
+            report = json.loads(report)
+            fields = {key: report.get(key) for key in [
+                "pid", "procName", "procPath", "exception", "termination", "asi",
+            ]}
+            threads = report.get("threads", [])
+            fault = report.get("faultingThread")
+            if isinstance(fault, int) and 0 <= fault < len(threads):
+                fields["thread"] = threads[fault]
+            print(f"crash {path.name}: {header}\n{json.dumps(fields)}", flush=True)
+        except (ValueError, TypeError):
+            print(f"crash {path.name}: {text[:16384]}", flush=True)
 
 
 def delivered(pid, text):
