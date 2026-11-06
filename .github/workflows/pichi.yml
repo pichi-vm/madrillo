@@ -41,6 +41,7 @@ jobs:
           repository: pichi-vm/pichi
           ref: ${{ inputs.pichi_revision }}
           path: pichi
+          submodules: recursive
       - name: Install pinned toolchains
         run: |
           rustup toolchain install 1.94.0 --profile minimal

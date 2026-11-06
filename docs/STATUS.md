@@ -20,7 +20,7 @@ Implemented so far:
   in its scope. These do not prove escaped-descendant containment.
 - Native build/qualification CI, explicitly separate from full conformance.
 
-The private remote is https://github.com/pichi-vm/madrillo. Native foundation CI
+The repository is https://github.com/pichi-vm/madrillo (now public). Native foundation CI
 passed on Linux, macOS, and Windows MSVC at `bd716e3313688493d1d0f0aa40c7e5921f58d326`:
 [run 42095614947](https://github.com/pichi-vm/madrillo/actions/runs/42095614947).
 This does not increment the full conformance streak.
@@ -515,3 +515,37 @@ The temporary local-fetch redirection is removed from caller qualification.
 Pichi's normal platform CI now builds the monitor revision pinned by its
 library lock entry and supplies the resulting executable to the caller tests;
 no cross-repository credential or library runtime dependency is needed.
+
+Dillo PR 92 has been rebased onto current main at `a75f0e3`. All 39 console
+unit tests and 24 Linux/KVM boot tests pass locally, including default console
+EOF and abrupt monitor loss. The native three-host console matrix is green;
+Windows/WHP and macOS/HVF VM CI pass, while Linux jobs were still running or
+queued at this checkpoint. The PR remains draft pending current-head checks.
+
+Pichi [draft PR 154](https://github.com/pichi-vm/pichi/pull/154) has been rebased
+onto current main and pushed at `307b2760`. Its build path preserves the current
+array-based `pichi-launch` protocol, native boot configuration, guest-selected
+sources and quiet-build diagnostics. Active build records retain the whole
+read-only image cache because the guest selects its own inputs; ordinary run
+records retain explicit image pins. Unknown or incomplete cleanup remains
+conservative. The matching default-console-lifetime dillo revision is pinned
+for both Cargo artifacts and appliance builds.
+
+On this rebased source, 136 unit tests, 27 selected build/run/rmi/workload CLI
+tests, and the explicit native initial-channel/reconnect test pass locally.
+The earlier native caller run
+[42134965662](https://github.com/pichi-vm/madrillo/actions/runs/42134965662)
+passed on Linux and macOS, but Windows failed to create the independent monitor
+with Access Denied (OS error 5). That failure is unresolved; a denied Job
+breakaway is a hypothesis, not an established cause. Earlier appliance smoke
+evidence does not qualify the rebased guest protocol. Windows extra-handle
+inheritance, caller containment, stop/log presentation and signal/resize work
+remain open, as does the macOS C07 scope decision. Full conformance remains
+zero; none of these partial qualification runs increments the required streak.
+
+At the user's request, accumulated scratch downloads, probes, logs, bytecode,
+conformance output and temporary build directories have been removed. Historical
+research deliverables are tracked under `docs/reference/`; active implementation
+worktrees and user-owned files are preserved. The final local verification ran
+inside an automatically removed temporary directory. CI now removes its monitor
+checkout after qualification, including failure and cancellation paths.
