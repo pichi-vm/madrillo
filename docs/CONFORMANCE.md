@@ -50,15 +50,19 @@ the full runner must fail closed while any requirement remains pending.
 
 The manually dispatched `dillo.yml` workflow qualifies the selected immutable
 Dillo revision against the monitor built from that workflow's source. It runs
-three real VM console-lifetime cases on native KVM, HVF and WHP, including the
-explicitly selected monitor-crash case. `tools/check_dillo.py` rejects zero-test
+four real VM console-lifetime/resize cases on native KVM, HVF and WHP, including
+the explicitly selected monitor-crash case. `tools/check_dillo.py` rejects zero-test
 or ignored-only runs and requires guest input, sustained unread-input pressure,
 and a cooperative zero exit after monitor death. A separate native pipe test
 proves hangup detection with unread bytes and verifies that observation consumes
 none of them. The C24 cases run these checks against the pinned Dillo checkout;
 the requirement remains pending until its complete native review finishes.
-Linux fixtures need 128 free 2 MiB hugepages for their 256 MiB guests. This focused
-workflow does not replace the full VM suite.
+The resize case sends three non-square dimensions through Dillo's private
+endpoint and reads the guest hvc terminal size, then checks console-loss teardown.
+It uses Fedora 44's fixed virtio-console driver; older Linux kernels reverse
+the standard resize dimensions. Linux fixtures need 256 free 2 MiB hugepages
+for the largest 512 MiB guest. This focused workflow does not replace the full
+VM suite or prove Pichi's complete terminal path.
 
 `tools/check_pichi.py MONITOR PICHI_CHECKOUT` runs the caller unit/CLI cases and
 explicit native launch and monitor-crash fixtures. On Windows it invokes the

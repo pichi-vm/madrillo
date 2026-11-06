@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Qualify real native VM console lifetime against the selected monitor."""
+"""Qualify real native VM console lifetime and the direct resize endpoint."""
 import os
 from pathlib import Path
 import platform
@@ -31,15 +31,16 @@ def main():
     assert unit in result.stdout and "1 passed; 0 failed; 0 ignored;" in result.stdout
     assert "console lifetime observed with " in result.stdout
     cases = [
-        ("managed_console_close_stops_a_booted_vm", False,
+        ("console_lifetime::managed_console_close_stops_a_booted_vm", False,
          ["native VM console lifetime: boot report, ordinary input, cooperative zero exit"]),
-        ("null_console_input_requests_shutdown_without_a_flag", False, []),
-        ("monitor_crash_allows_cooperative_vm_teardown", True,
+        ("console_lifetime::null_console_input_requests_shutdown_without_a_flag", False, []),
+        ("console_lifetime::monitor_crash_allows_cooperative_vm_teardown", True,
          ["madrillo crash: unread guest console input stayed backpressured",
           "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero"]),
+        ("console_resize::console_resize_reaches_guest_and_preserves_lifetime", False,
+         ["native VM resize: initial size, reconnect, rows/columns, cooperative zero exit"]),
     ]
-    for name, ignored, markers in cases:
-        test = "console_lifetime::" + name
+    for test, ignored, markers in cases:
         command = ["cargo", "+nightly-2026-07-06", "--config", "packaging/cargo-config.toml",
                    "test", "--locked", "-p", "dillo",
                    "--features", "vm-tests", "--test", "boot", test, "--", "--exact",
@@ -56,7 +57,7 @@ def main():
         assert "1 passed; 0 failed; 0 ignored;" in result.stdout, "VM test did not execute"
         for marker in markers:
             assert marker in result.stdout, f"missing VM evidence: {marker}"
-    print("native Dillo console lifetime: three real VM cases passed", flush=True)
+    print("native Dillo console lifetime and resize: four real VM cases passed", flush=True)
 
 
 if __name__ == "__main__":

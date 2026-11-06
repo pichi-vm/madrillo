@@ -5,6 +5,31 @@ Goal active. Three sequential plan reviews are complete. Full conformance:
 has 21 requirements with reviewed executable coverage. C04, C07, C09, C10,
 C18, C19, C24, C26 and C27 remain pending. Readiness is not a pass.
 
+Console resize now has a direct Pichi–Dillo implementation. Pichi sends the
+interactive terminal's dimensions at startup, on change, and after reattachment;
+Dillo forwards the latest size through virtio-console control messages. Madrillo
+does not interpret this channel. Dillo `7030527` passes
+[native console unit tests on all three hosts](https://github.com/pichi-vm/dillo/actions/runs/42181830520)
+and [Linux VM CI](https://github.com/pichi-vm/dillo/actions/runs/42181837169), including
+actual guest terminal sizes and buffered-input monitor loss. The resize guest
+uses Fedora 44's fixed driver; older Linux kernels reverse standard cols/rows.
+
+Pichi `1e5b194e` passes [native caller qualification on all three hosts](https://github.com/pichi-vm/madrillo/actions/runs/42181799204).
+The Unix terminal fixture covers resize, detach/reattach and initially detached
+launch; native endpoint tests also pass on Windows. This does not yet prove
+Windows terminal size observation through the full interactive CLI or the
+complete native Pichi/VM/build path. C26 remains pending. Pichi `e689b0c8` adds
+cleanup of a Unix resize socket left by abrupt child exit: only confirmed
+complete workload cleanup permits removal. Local caller, build/run/storage,
+native launch and monitor-crash cases pass; native qualification of this follow-up
+is pending. An additional strict Pichi Clippy run reports existing warnings in
+build, storage and configuration code; no strict-Clippy pass is claimed.
+
+The focused Dillo qualification now requires four real VM cases, adding guest
+resize to the three lifetime cases, and reserves memory for its 512 MiB guest.
+The manifest pins the resize implementations and maps those cases to C26 without
+promoting readiness or advancing the full-conformance streak.
+
 The macOS scope decision is settled: descendants must remain in the workload's
 managed process group. Dillo owns shutdown for any helper it deliberately moves
 outside it. PLAN.md and native tests cover ordinary descendants and demonstrate

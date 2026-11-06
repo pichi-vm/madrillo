@@ -72,21 +72,21 @@ jobs:
           workspaces: |
             monitor -> target
             dillo -> target
-      - name: Prepare KVM and 256 MiB guest memory
+      - name: Prepare KVM and 512 MiB guest memory
         if: runner.os == 'Linux'
         run: |
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
           original=$(sysctl -n vm.nr_hugepages)
-          if [ "$original" -lt 128 ]; then
+          if [ "$original" -lt 256 ]; then
             echo "MADRILLO_ORIGINAL_HUGEPAGES=$original" >> "$GITHUB_ENV"
-            sudo sysctl -w vm.nr_hugepages=128
+            sudo sysctl -w vm.nr_hugepages=256
           fi
-          awk '/HugePages_Free:/ {exit ($2 < 128)}' /proc/meminfo
+          awk '/HugePages_Free:/ {exit ($2 < 256)}' /proc/meminfo
       - name: Build native monitor
         working-directory: monitor
         run: cargo +1.94.0 build --locked --features cli --bin madrillo
-      - name: Real VM console input, EOF and monitor crash
+      - name: Real VM console input, EOF, monitor crash and resize
         env:
           CARGO_BUILD_RUSTFLAGS: '-D warnings'
         run: |
@@ -98,12 +98,12 @@ jobs:
           subprocess.run(['python3', '-B', str(monitor / 'tools/check_dillo.py'), str(binary), 'dillo'], check=True)
           PY
       - name: Scope of evidence
-        run: echo 'Real VM lifetime qualification only. Full C01-C30 conformance remains pending.'
+        run: echo 'Real VM lifetime and resize qualification only. Full C01-C30 conformance remains pending.'
       - name: Restore test-owned hugepage reservation
         if: always() && runner.os == 'Linux' && env.MADRILLO_ORIGINAL_HUGEPAGES != ''
         run: |
           # Do not replace a subsequent reservation made by another job.
-          if [ "$(sysctl -n vm.nr_hugepages)" -eq 128 ]; then
+          if [ "$(sysctl -n vm.nr_hugepages)" -eq 256 ]; then
             sudo sysctl -w "vm.nr_hugepages=$MADRILLO_ORIGINAL_HUGEPAGES"
           fi
       - name: Release the CI Python store reference

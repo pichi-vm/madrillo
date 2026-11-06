@@ -412,7 +412,12 @@
       "behavior": "Pichi integration",
       "criterion": "Shared run/build launch, run/attach/logs/wait/stop, IDs/discovery/prune protection, terminal restore/detach/resize semantics",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "native-pichi-caller-unix",
+        "native-pichi-caller-windows",
+        "native-dillo-console-unix",
+        "native-dillo-console-windows"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -1180,7 +1185,8 @@
         "console lifetime observed with ",
         "madrillo crash: unread guest console input stayed backpressured",
         "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
-        "native Dillo console lifetime: three real VM cases passed"
+        "native VM resize: initial size, reconnect, rows/columns, cooperative zero exit",
+        "native Dillo console lifetime and resize: four real VM cases passed"
       ]
     },
     {
@@ -1200,7 +1206,8 @@
         "console lifetime observed with ",
         "madrillo crash: unread guest console input stayed backpressured",
         "madrillo crash: confirmed guest input, killed monitor, observed dillo exit zero",
-        "native Dillo console lifetime: three real VM cases passed"
+        "native VM resize: initial size, reconnect, rows/columns, cooperative zero exit",
+        "native Dillo console lifetime and resize: four real VM cases passed"
       ]
     },
     {
@@ -1244,11 +1251,11 @@
   "components": {
     "pichi": {
       "repository": "https://github.com/pichi-vm/pichi",
-      "revision": "5ee1d20d96c9c1d050a068f899b1e1f520d4fa5e"
+      "revision": "e689b0c8628d9cb3c889069a1ca7b496bf475f76"
     },
     "dillo": {
       "repository": "https://github.com/pichi-vm/dillo",
-      "revision": "6086bf1f625f39b80174bc649cf0c6570554d854"
+      "revision": "70305271cdb6bb54e165897b87c0e44c91ea4d90"
     }
   }
 }
