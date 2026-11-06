@@ -45,9 +45,13 @@ fn completion(
         std::thread::sleep(Duration::from_millis(10));
     };
     assert!(status.success(), "monitor failed: {status}");
-    Ok(serde_json::from_slice(&fs::read(
-        state.join("result.json"),
-    )?)?)
+    let result: Completion = serde_json::from_slice(&fs::read(state.join("result.json"))?)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis();
+    assert!(result.exited_at_unix_ms > 0, "{result:?}");
+    assert!(u128::from(result.exited_at_unix_ms) <= now, "{result:?}");
+    Ok(result)
 }
 
 #[cfg(unix)]

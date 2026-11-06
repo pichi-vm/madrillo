@@ -331,8 +331,8 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
             result.leader = LeaderResult::SpawnFailed {
                 message: error.to_string(),
             };
+            result.exited_at_unix_ms = unix_ms();
         }
-        result.exited_at_unix_ms = unix_ms();
     }
     drop(held);
     connections.close_listener();
@@ -678,7 +678,12 @@ fn supervise(
         if let Err(kill) = child.force() {
             cleanup_errors.push(kill.to_string());
         }
-        (result.leader, result.cleanup, result.oom) = child.finish(cleanup_errors);
+        (
+            result.leader,
+            result.cleanup,
+            result.oom,
+            result.exited_at_unix_ms,
+        ) = child.finish(cleanup_errors);
         return Err(error.into());
     }
     #[cfg(target_os = "linux")]
@@ -747,11 +752,15 @@ fn supervise(
         }
         thread::sleep(Duration::from_millis(5));
     }
-    result.exited_at_unix_ms = unix_ms();
     if let Err(error) = child.force() {
         cleanup_errors.push(format!("force workload: {error}"));
     }
-    (result.leader, result.cleanup, result.oom) = child.finish(cleanup_errors);
+    (
+        result.leader,
+        result.cleanup,
+        result.oom,
+        result.exited_at_unix_ms,
+    ) = child.finish(cleanup_errors);
     input.close();
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {

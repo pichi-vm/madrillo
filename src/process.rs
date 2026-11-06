@@ -6,6 +6,7 @@ use std::{
 
 pub(crate) struct Workload {
     observed: Option<LeaderResult>,
+    exited_at_unix_ms: u64,
     #[cfg(target_os = "linux")]
     group: Option<crate::cgroup::Cgroup>,
     #[cfg(unix)]
@@ -49,6 +50,7 @@ impl Workload {
             let child = crate::launch::spawn(command, membership, inherited)?;
             Ok(Self {
                 observed: None,
+                exited_at_unix_ms: 0,
                 child,
                 #[cfg(target_os = "linux")]
                 group,
@@ -66,6 +68,7 @@ impl Workload {
             Ok(Self {
                 child,
                 observed: None,
+                exited_at_unix_ms: 0,
             })
         }
     }
@@ -96,6 +99,13 @@ impl Workload {
         }
     }
     pub(crate) fn exited(&mut self) -> io::Result<bool> {
+        let exited = self.observe_exit()?;
+        if exited && self.exited_at_unix_ms == 0 {
+            self.exited_at_unix_ms = crate::unix_ms();
+        }
+        Ok(exited)
+    }
+    fn observe_exit(&mut self) -> io::Result<bool> {
         #[cfg(target_os = "linux")]
         {
             use nix::sys::wait::{Id, WaitPidFlag, waitid, waitpid};
@@ -252,9 +262,10 @@ impl Workload {
     pub(crate) fn finish(
         mut self,
         mut errors: Vec<String>,
-    ) -> (LeaderResult, CleanupResult, OomEvidence) {
+    ) -> (LeaderResult, CleanupResult, OomEvidence, u64) {
         use std::{sync::mpsc, thread, time::Duration};
         let known = self.observed.clone().unwrap_or(LeaderResult::Unknown);
+        let known_exit_time = self.exited_at_unix_ms;
         let (done, complete) = mpsc::sync_channel(1);
         let spawned = thread::Builder::new()
             .name("madrillo-reap".into())
@@ -267,7 +278,7 @@ impl Workload {
                     }
                 };
                 let cleanup = self.cleanup_result(errors);
-                let _ = done.send((leader, cleanup, self.oom()));
+                let _ = done.send((leader, cleanup, self.oom(), self.exited_at_unix_ms));
             });
         match spawned {
             Ok(_) => match complete.recv_timeout(Duration::from_secs(5)) {
@@ -280,6 +291,7 @@ impl Workload {
                     OomEvidence::Unavailable {
                         reason: "final workload observation timed out".into(),
                     },
+                    known_exit_time,
                 ),
             },
             Err(error) => (
@@ -290,23 +302,30 @@ impl Workload {
                 OomEvidence::Unavailable {
                     reason: "final workload observation unavailable".into(),
                 },
+                known_exit_time,
             ),
         }
     }
-    pub(crate) fn reap(&mut self) -> io::Result<LeaderResult> {
+    fn reap(&mut self) -> io::Result<LeaderResult> {
         #[cfg(unix)]
-        {
-            Ok(native_result(self.child.wait()?))
-        }
+        let leader = native_result(self.child.wait()?);
         #[cfg(windows)]
-        {
-            match &mut self.child {
-                WindowsChild::Pipe(child) => Ok(native_result(child.wait()?)),
-                WindowsChild::Terminal(child) => Ok(LeaderResult::Exit {
-                    code: child.wait().map_err(io::Error::other)?.code(),
-                }),
-            }
+        let leader = match &mut self.child {
+            // Observe the leader before the outer wrapper waits for the Job.
+            WindowsChild::Pipe(child) => native_result(child.inner_mut().wait()?),
+            WindowsChild::Terminal(child) => LeaderResult::Exit {
+                code: child.wait().map_err(io::Error::other)?.code(),
+            },
+        };
+        if self.exited_at_unix_ms == 0 {
+            self.exited_at_unix_ms = crate::unix_ms();
         }
+        self.observed = Some(leader.clone());
+        #[cfg(windows)]
+        if let WindowsChild::Pipe(child) = &mut self.child {
+            child.wait()?;
+        }
+        Ok(leader)
     }
     fn cleanup_result(&self, errors: Vec<String>) -> CleanupResult {
         let mut errors = errors;

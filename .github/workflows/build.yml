@@ -79,6 +79,9 @@ jobs:
       - name: Differential conmon log and exit fixtures
         if: runner.os == 'Linux'
         run: python3 tools/compare_conmon.py .qualification/reference/oracle.json target/debug/madrillo target/debug/madrillo-fixture
+      - name: Native exit time follows delayed termination
+        if: runner.os == 'Linux'
+        run: python3 tools/check_exit_time.py target/debug/madrillo
       - name: Differential native journal and combined file fixtures
         if: runner.os == 'Linux'
         run: sudo python3 tools/check_journal.py .qualification/reference/oracle.json target/debug/madrillo target/debug/madrillo-fixture

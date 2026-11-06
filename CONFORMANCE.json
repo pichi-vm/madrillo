@@ -114,7 +114,8 @@
       "criterion": "Preserve leader native exit/signal/full Windows code and exit time; reap owned/adopted children; no fake success or stale-PID kill",
       "status": "pending",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "linux-exit-observation"
       ],
       "evidence": [],
       "hosts": [
@@ -934,6 +935,22 @@
       "timeout": 120,
       "success_markers": [
         "test native_command_shell_interrupt_survives_detach ... ok"
+      ]
+    },
+    {
+      "id": "linux-exit-observation",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "python3",
+        "tools/check_exit_time.py",
+        "target/debug/madrillo"
+      ],
+      "timeout": 30,
+      "success_markers": [
+        "Native exit observation passed: retained timestamp follows delayed termination"
       ]
     }
   ],

@@ -76,6 +76,8 @@ pub struct Completion {
     pub version: u16,
     pub leader: LeaderResult,
     pub cause: CompletionCause,
+    /// Wall-clock time when the leader's terminal status was observed. For a
+    /// failed/cancelled launch, when that outcome was recorded. Zero if unknown.
     pub exited_at_unix_ms: u64,
     pub cleanup: CleanupResult,
     pub oom: OomEvidence,
