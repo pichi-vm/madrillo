@@ -121,6 +121,7 @@ class EvidenceGate(unittest.TestCase):
     def test_windows_gnu_is_rejected_before_running_cases(self):
         report = self.root / "gnu.json"
         with patch.object(gate.platform, "system", return_value="Windows"), \
+             patch.object(gate.platform, "platform", return_value="Windows synthetic host"), \
              patch.object(gate.subprocess, "check_output", return_value="host: x86_64-pc-windows-gnu\n"), \
              patch.object(gate.subprocess, "run") as execute, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(gate.run(argparse.Namespace(round="gnu", report=report)), 1)

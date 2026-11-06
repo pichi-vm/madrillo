@@ -1,9 +1,7 @@
 #![forbid(unsafe_code)]
 #![cfg(feature = "qualification")]
 
-#[cfg(unix)]
-use madrillo::CompletionCause;
-use madrillo::{Completion, LeaderResult};
+use madrillo::{Completion, CompletionCause, LeaderResult};
 use std::{
     fs,
     process::{Child, Command, Stdio},
@@ -103,39 +101,50 @@ fn fatal_errors_survive_threshold_and_invalid_levels_launch_nothing()
     Ok(())
 }
 
-#[cfg(unix)]
 #[test]
 fn a_full_diagnostic_sink_cannot_block_timeout_or_result_publication()
 -> Result<(), Box<dyn std::error::Error>> {
-    use std::{
-        io::Write,
-        os::{fd::OwnedFd, unix::net::UnixStream},
-    };
+    use std::{io::Write, sync::mpsc, thread};
     let root = tempfile::tempdir()?;
     let state = root.path().join("state");
-    let (_reader, mut writer) = UnixStream::pair()?;
-    writer.set_nonblocking(true)?;
-    loop {
-        match writer.write(&[b'x'; 8192]) {
-            Ok(0) => return Err("diagnostic sink unexpectedly closed".into()),
-            Ok(_) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
-            Err(error) => return Err(error.into()),
-        }
-    }
-    writer.set_nonblocking(false)?;
-    let writer: OwnedFd = writer.into();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_madrillo"))
-        .arg("--state-dir")
-        .arg(&state)
-        .args(["--log-level", "trace", "--timeout", "1", "--"])
-        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
-        .arg("sleep")
-        .stdout(Stdio::null())
-        .stderr(Stdio::from(writer))
-        .spawn()?;
-    wait(&mut child)?;
-    let result: Completion = serde_json::from_slice(&fs::read(state.join("result.json"))?)?;
+    let (reader, writer) = std::io::pipe()?;
+    let mut filling_writer = writer.try_clone()?;
+    let (ready, started) = mpsc::sync_channel(1);
+    let filler = thread::Builder::new()
+        .name("fill-diagnostic-pipe".into())
+        .spawn(move || -> std::io::Result<()> {
+            filling_writer.write_all(b"x")?;
+            let _ = ready.send(());
+            loop {
+                filling_writer.write_all(&[b'x'; 8192])?;
+            }
+        })?;
+    // Use ordinary synchronous pipes on every host, including Windows. Closing
+    // the unread end releases the filler even when launching the monitor fails.
+    let outcome = (|| -> Result<Completion, Box<dyn std::error::Error>> {
+        started.recv_timeout(Duration::from_secs(8))?;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_madrillo"))
+            .arg("--state-dir")
+            .arg(&state)
+            .args(["--log-level", "trace", "--timeout", "1", "--"])
+            .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+            .arg("sleep")
+            .stdout(Stdio::null())
+            .stderr(Stdio::from(writer))
+            .spawn()?;
+        wait(&mut child)?;
+        Ok(serde_json::from_slice(&fs::read(
+            state.join("result.json"),
+        )?)?)
+    })();
+    drop(reader);
+    let fill_error = filler
+        .join()
+        .map_err(|_| "diagnostic pipe filler panicked")?
+        .err()
+        .ok_or("diagnostic pipe filler unexpectedly finished")?;
+    assert_eq!(fill_error.kind(), std::io::ErrorKind::BrokenPipe);
+    let result = outcome?;
     assert_eq!(result.cause, CompletionCause::TimedOut);
     assert!(
         result
