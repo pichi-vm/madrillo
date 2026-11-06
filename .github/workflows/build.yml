@@ -22,6 +22,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install pinned Rust
         run: rustup toolchain install 1.94.0 --profile minimal --component rustfmt --component clippy
+      - uses: Swatinem/rust-cache@v2
       - name: Format
         run: cargo fmt --check
       - name: Conformance gate negative tests (not conformance evidence)
