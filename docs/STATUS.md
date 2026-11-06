@@ -667,3 +667,28 @@ All temporary local build and PR-body files were removed. Pichi PR 154 remains
 draft; Dillo PR 92 remains ready with all checks green. C01-C30 full conformance
 remains zero, with macOS escaped-descendant containment, Windows exact handle
 inheritance, caller containment and remaining native VM qualification unresolved.
+
+The isolated `feat/windows-inheritance-probe` branch qualifies Firehazard at
+`1b5818d8fa6c489addb8cbb133a62ab917cc1715` through safe owned Rust. At probe
+revision `d9e3ae2`, all three native jobs passed in
+[run 42151573930](https://github.com/pichi-vm/madrillo/actions/runs/42151573930).
+The actual Windows fixture preserved an extra pipe's numeric handle, separate
+binary stdio, exclusion of an unlisted inheritable writer, atomic Job membership,
+native exit 37 and observed Job emptiness. The first run rejected an incorrectly
+initialized extended-startup structure size; that probe bug was fixed.
+
+This is not a selected replacement for production launch. Firehazard's safe
+handle-list API needs its typed borrowed handles: converting Madrillo's existing
+inherited `FileDescriptor` to a standard `File` duplicates it and changes the
+number. Safe adoption preserving the original number is still unqualified.
+Its synchronous-stdio types also need composition with existing passthrough
+handles; pseudoconsole creation requires unsafe code, and the command-line
+helper's trailing-backslash behavior needs separate qualification. Cross-checking
+on Linux fails on the dependency's Windows-style source paths; native Windows
+compilation and execution passed. The experimental dependency and fixture remain
+on that branch only, with no production dependency or launch changes.
+
+RightKit 0.5.7 exposes exact raw-handle inheritance and suspended creation, but
+its contained spawn always adds a kill-on-close Job. It therefore cannot replace
+the pipe path's cooperative monitor-loss behavior as-is. No dependency code or
+unsafe shim was copied. Full conformance remains 0/3.
