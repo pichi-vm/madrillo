@@ -7,7 +7,9 @@ unshare --mount --propagation private. The only mounted filesystem is a new
 """
 import argparse
 import json
+import os
 from pathlib import Path
+import signal
 import socket
 import struct
 import subprocess
@@ -25,6 +27,26 @@ def result(state):
     return json.loads((state / "result.json").read_bytes())
 
 
+def traced(command, retained_state=None):
+    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               start_new_session=True)
+    try:
+        if retained_state is not None:
+            deadline = time.monotonic() + 10
+            while not (retained_state / "result.json").exists():
+                assert process.poll() is None, "tracer exited without retained completion"
+                assert time.monotonic() < deadline, "stalled log prevented bounded result publication"
+                time.sleep(0.01)
+        # A traced thread's exit can itself wait for strace's injected timer.
+        # Publication above, not tracer exit, measures supervisor responsiveness.
+        output, errors = process.communicate(timeout=25 if retained_state is not None else 12)
+        assert process.returncode == 0, (output, errors)
+    finally:
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGKILL)
+            process.wait(timeout=5)
+
+
 with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
     root = Path(temporary)
     for no_sync in (False, True):
@@ -36,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
         if no_sync:
             command.append("--no-sync-log")
         command += ["--", str(fixture), "emit"]
-        subprocess.run(command, check=True, capture_output=True, timeout=10)
+        traced(command)
         retained = result(state)
         assert retained["leader"] == {"type": "exit", "code": 37}, retained
         if no_sync:
@@ -45,6 +67,26 @@ with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
         else:
             assert any("log synchronization" in error for error in retained["log_errors"]), retained
             assert "(INJECTED)" in trace.read_text(), "the fsync fault was not exercised"
+
+    for syscall, mode, cause in [("write", "flood", "timed_out"),
+                                 ("fsync", "emit", "leader_exit")]:
+        state = root / ("blocked-" + syscall)
+        trace = root / (state.name + ".trace")
+        command = ["strace", "-f", "-e", f"trace={syscall}",
+                   "-e", f"inject={syscall}:delay_exit=20s:when=1",
+                   "-P", str(state / "console.log"), "-o", str(trace),
+                   str(monitor), "--state-dir", str(state), "--timeout", "1",
+                   "--", str(fixture), mode]
+        traced(command, state)
+        assert "(DELAYED)" in trace.read_text(), f"the {syscall} stall was not exercised"
+        retained = result(state)
+        assert retained["cause"] == cause, retained
+        assert retained["cleanup"] == {"type": "complete"}, retained
+        assert retained["output_truncated"], retained
+        assert any("output drain/log synchronization did not complete" in error
+                   for error in retained["log_errors"]), retained
+        if mode == "emit":
+            assert retained["leader"] == {"type": "exit", "code": 37}, retained
 
     full = root / "full"
     full.mkdir()
@@ -99,4 +141,4 @@ with tempfile.TemporaryDirectory(prefix="madrillo-storage-") as temporary:
                 process.wait(timeout=5)
     finally:
         subprocess.run(["umount", str(full)], check=True, timeout=5)
-print("Storage fault qualification passed: fsync error/opt-out, bounded full disk, failed publication without final acknowledgement or callback")
+print("Storage fault qualification passed: fsync error/opt-out, bounded blocked write/fsync and full disk, failed publication without final acknowledgement or callback")

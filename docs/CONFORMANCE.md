@@ -157,3 +157,14 @@ or an exact kernel exit timestamp. A previously observed exit time survives
 later cleanup errors; an unobserved exit has timestamp zero. Native core cases
 also check that known outcomes carry a timestamp by completion. C08 remains
 pending while the broader reaping/result review is incomplete.
+
+C14/C15 include Linux write/fsync completion stalls, synchronization errors and
+opt-out, an isolated full filesystem, and failed result publication. During a
+stall, the test requires retained completion within ten seconds while strace
+holds the log worker for twenty seconds. It then lets the tracer unwind and
+checks the monitor's exit. This measures bounded supervision and publication;
+the tracer can postpone OS thread exit, so its lifetime is not the shutdown
+deadline. The result must explicitly report truncated/incomplete logging.
+The ordinary blocked diagnostic-pipe test runs natively on every host and
+requires monitor exit as well as retained timeout/flush errors. These additions
+do not promote the still-pending pressure/durability requirements.

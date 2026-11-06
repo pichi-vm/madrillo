@@ -211,7 +211,8 @@
       "criterion": "Bounded queues/client count; sink backpressure and write failures explicit; stalled viewer isolated; control/deadline remains responsive",
       "status": "pending",
       "tests": [
-        "current-tests"
+        "current-tests",
+        "linux-storage-faults"
       ],
       "evidence": [],
       "hosts": [
@@ -225,7 +226,9 @@
       "behavior": "Durability",
       "criterion": "Default log synchronization and explicit opt-out; atomically retained result; sync/storage failures visible; crash claims precisely limited",
       "status": "pending",
-      "tests": [],
+      "tests": [
+        "linux-storage-faults"
+      ],
       "evidence": [],
       "hosts": [
         "linux",
@@ -556,7 +559,9 @@
         "test administrative_eof_does_not_require_taking_the_active_writer ... ok",
         "test close_input_drains_preceding_accepted_bytes ... ok",
         "test detached_timeout_preserves_reason_and_console_lifetime ... ok",
-        "test force_stops_grandchildren_and_concurrent_forks ... ok"
+        "test force_stops_grandchildren_and_concurrent_forks ... ok",
+        "test a_full_diagnostic_sink_cannot_block_timeout_or_result_publication ... ok",
+        "test stalled_viewer_does_not_block_force_or_logging ... ok"
       ]
     },
     {
@@ -951,6 +956,29 @@
       "timeout": 30,
       "success_markers": [
         "Native exit observation passed: retained timestamp follows delayed termination"
+      ]
+    },
+    {
+      "id": "linux-storage-faults",
+      "hosts": [
+        "linux"
+      ],
+      "kind": "test",
+      "command": [
+        "sudo",
+        "-n",
+        "unshare",
+        "--mount",
+        "--propagation",
+        "private",
+        "python3",
+        "tools/check_storage.py",
+        "target/debug/madrillo",
+        "target/debug/madrillo-fixture"
+      ],
+      "timeout": 90,
+      "success_markers": [
+        "Storage fault qualification passed: fsync error/opt-out, bounded blocked write/fsync and full disk, failed publication without final acknowledgement or callback"
       ]
     }
   ],
