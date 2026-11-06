@@ -13,6 +13,20 @@ if sys.platform != "darwin":
 monitor, fixture = (str(Path(path).resolve()) for path in sys.argv[1:3])
 
 
+def failure_context(state, stderr):
+    print(f"monitor stderr: {stderr!r}", flush=True)
+    for name in ["result.json", "console.log"]:
+        path = state / name
+        if path.exists():
+            print(f"{name}: {path.read_bytes()[-8192:]!r}", flush=True)
+    query = subprocess.run([
+        "/usr/bin/log", "show", "--last", "1m", "--style", "ndjson",
+        "--info", "--debug", "--predicate", 'eventMessage CONTAINS[c] "madrillo"',
+    ], capture_output=True, timeout=15)
+    print(f"native failure context ({query.returncode}): {query.stdout[-32768:]!r}; "
+          f"{query.stderr[-8192:]!r}", flush=True)
+
+
 def delivered(pid, text):
     # Query Apple's actual service; a successful logging API call alone is not
     # evidence of delivery. Filter narrowly, and permit asynchronous ingestion.
@@ -66,6 +80,8 @@ with tempfile.TemporaryDirectory(prefix="madrillo-syslog-") as tmp:
             assert b"exit command failed:" in stderr, stderr
             assert b"diagnostics syslog:" not in stderr, stderr
             result = json.loads((state / "result.json").read_text())
+            if result["leader"] != {"type": "exit", "code": 37}:
+                failure_context(state, stderr)
             assert result["leader"] == {"type": "exit", "code": 37}, result
             assert not any("diagnostics" in error for error in result["monitor_errors"]), result
             entries = delivered(child.pid, "exit command failed:")
