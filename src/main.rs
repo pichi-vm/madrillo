@@ -285,7 +285,7 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
     let directory = cli.state_dir.as_ref().ok_or("missing state directory")?;
     let mut state = State::create(directory)?;
     #[cfg(unix)]
-    let (original_oom_score, oom_warning) = oom::protect();
+    let (original_oom_score, oom_warning) = oom::protect(diagnostics);
     #[cfg(unix)]
     let endpoint = cli
         .listen

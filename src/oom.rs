@@ -1,6 +1,8 @@
 //! Protect only this monitor. The fresh launcher restores the caller's score.
 #[cfg(target_os = "linux")]
-pub(crate) fn protect() -> (Option<i32>, Option<String>) {
+pub(crate) fn protect(
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) -> (Option<i32>, Option<String>) {
     use std::io::Read;
     let original = (|| -> std::io::Result<i32> {
         let mut value = String::new();
@@ -20,6 +22,14 @@ pub(crate) fn protect() -> (Option<i32>, Option<String>) {
         }
     };
     if let Err(error) = restore(-1000) {
+        // Rootless callers normally cannot lower their inherited adjustment.
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            diagnostics.emit(
+                crate::diagnostics::Level::Debug,
+                format_args!("OOM protection unavailable: {error}"),
+            );
+            return (None, None);
+        }
         return (None, Some(format!("OOM protection unavailable: {error}")));
     }
     (Some(original), None)
@@ -31,7 +41,9 @@ pub(crate) fn restore(original: i32) -> std::io::Result<()> {
 }
 
 #[cfg(not(target_os = "linux"))]
-pub(crate) fn protect() -> (Option<i32>, Option<String>) {
+pub(crate) fn protect(
+    _diagnostics: &mut crate::diagnostics::Diagnostics,
+) -> (Option<i32>, Option<String>) {
     (None, None)
 }
 
