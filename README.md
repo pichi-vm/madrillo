@@ -34,6 +34,12 @@ the cgroup until completion. Missing observation support (including v1 event
 registration on PREEMPT_RT), permissions or failed cleanup remain explicit in
 the result.
 
+On Linux, the monitor attempts to exempt itself from the kernel OOM killer and
+restores the caller's adjustment in the workload and exit helper. Permission
+denial is expected for unprivileged launches and is reported at debug level;
+the monitor remains subject to OOM killing. Other protection failures remain
+warnings. No additional privileges are requested.
+
 Linux OOM observation also creates `state-dir/oom` while the workload is still
 running, matching conmon's persistent marker. Native inotify/eventfd notifications
 drive observation; final counters are checked again at completion. The marker

@@ -12,12 +12,13 @@ parser.add_argument("fixture", type=Path)
 parser.add_argument("--expect", choices=("protected", "denied"), required=True)
 args = parser.parse_args()
 monitor, fixture = args.monitor.resolve(), args.fixture.resolve()
-for terminal in (False, True):
+for terminal, level in ((False, "warning"), (True, "warning"),
+                        (False, "debug"), (True, "debug")):
     with tempfile.TemporaryDirectory(prefix="madrillo-oom-adjust-") as temporary:
         root = Path(temporary)
         state, report = root / "state", root / "scores.json"
         command = [str(fixture), "exec-with-oom-score", "200", str(monitor),
-                   "--state-dir", str(state)]
+                   "--state-dir", str(state), "--log-level", level]
         command += ["--exit-command", str(fixture)]
         for argument in ["exit-hook", str(state), str(root / "hook-marker"), "0"]:
             command += ["--exit-command-arg", argument]
@@ -35,7 +36,10 @@ for terminal in (False, True):
             assert "OOM protection unavailable" not in warnings, result
         else:
             assert scores["monitor"] == 200, scores
-            assert "OOM protection unavailable" in warnings, result
+            assert "OOM protection unavailable" not in warnings, result
+            assert (b"OOM protection unavailable" in completed.stderr) == (level == "debug"), completed.stderr
+            if level == "debug":
+                assert b"[Debug]: OOM protection unavailable" in completed.stderr, completed.stderr
         assert result["leader"] == {"type": "exit", "code": 37}, result
         assert not result["monitor_errors"], result
 print(f"Native pipe/terminal OOM protection {args.expect}: workload and exit-helper restoration passed")
