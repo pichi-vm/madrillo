@@ -345,10 +345,18 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
             std::thread::sleep(Duration::from_secs(20));
             Ok(0)
         }
-        Some("echo") | Some("burst-echo") => {
-            if args[0] == "burst-echo" {
-                io::stdout().write_all(&[b'x'; 256 * 1024])?;
+        Some("echo") | Some("burst-echo") | Some("burst-exit") => {
+            if args[0] != "echo" {
+                let size = args
+                    .get(1)
+                    .map(|size| size.to_string_lossy().parse())
+                    .transpose()?
+                    .unwrap_or(256 * 1024);
+                io::stdout().write_all(&vec![b'x'; size])?;
                 io::stdout().flush()?;
+                if args[0] == "burst-exit" {
+                    return Ok(0);
+                }
             }
             let mut buffer = [0; 8192];
             loop {

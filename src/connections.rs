@@ -396,6 +396,20 @@ impl Connections {
         }
         Ok(())
     }
+    pub(crate) fn release_owner(&mut self) {
+        self.owner = None;
+    }
+    pub(crate) fn output_ready(&mut self) -> bool {
+        self.clients
+            .iter_mut()
+            .find(|client| self.owner == Some(client.id) && !client.dead)
+            .is_none_or(|client| {
+                if client.flush().is_err() {
+                    client.dead = true;
+                }
+                client.dead || client.written == client.outgoing.len()
+            })
+    }
     pub(crate) fn pending(&self) -> bool {
         self.clients
             .iter()

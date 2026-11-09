@@ -671,6 +671,56 @@ fn draining_viewer_survives_a_large_startup_burst() -> Result<(), Box<dyn std::e
 }
 
 #[test]
+fn slow_console_owner_receives_complete_output() -> Result<(), Box<dyn std::error::Error>> {
+    for (mode, delay) in [("burst-echo", 20), ("burst-exit", 60)] {
+        let (mut monitor, mut client) = Monitor::initial_command(
+            &[env!("CARGO_BIN_EXE_madrillo-fixture"), mode, "1048576"],
+            false,
+            &["--stdin"],
+            20,
+        )?;
+        assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+        assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+        let mut received = 0;
+        while received < 1024 * 1024 {
+            std::thread::sleep(Duration::from_millis(delay));
+            let ServerMessage::Output { bytes, .. } = client.next()? else {
+                return Err(format!("{mode}: slow console output interrupted").into());
+            };
+            assert!(bytes.iter().all(|byte| *byte == b'x'));
+            received += bytes.len();
+        }
+        assert_eq!(received, 1024 * 1024);
+        if mode == "burst-echo" {
+            client.send(ClientMessage::Input {
+                bytes: b"still attached\n".to_vec(),
+            })?;
+            client.output_until(b"still attached\n")?;
+            client.send(ClientMessage::CloseInput)?;
+        }
+        assert!(matches!(client.next()?, ServerMessage::Completed { result }
+            if result.leader == madrillo::LeaderResult::Exit { code: 0 }));
+        monitor.wait()?;
+    }
+    Ok(())
+}
+
+#[test]
+fn stalled_console_owner_does_not_block_force() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut owner) = Monitor::initial_with_flags("flood", false, &["--stdin"])?;
+    assert!(matches!(owner.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(owner.next()?, ServerMessage::Started { .. }));
+    std::thread::sleep(Duration::from_millis(300));
+    let mut control = monitor.connect()?;
+    control.send(ClientMessage::Terminate)?;
+    assert!(
+        matches!(control.next()?, ServerMessage::Completed { result }
+        if result.cause == CompletionCause::Forced && result.log_errors.is_empty())
+    );
+    monitor.wait()
+}
+
+#[test]
 fn force_stops_grandchildren_and_concurrent_forks() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(not(any(target_os = "linux", windows)))]
     let modes = ["waiting-tree", "racing-tree"];

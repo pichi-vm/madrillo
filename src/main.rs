@@ -765,6 +765,7 @@ fn supervise(
             .is_some_and(|seconds| started.elapsed() >= Duration::from_secs(seconds))
         {
             result.cause = CompletionCause::TimedOut;
+            connections.release_owner();
             break;
         }
         thread::sleep(Duration::from_millis(5));
@@ -779,7 +780,7 @@ fn supervise(
         result.exited_at_unix_ms,
     ) = child.finish(cleanup_errors);
     input.close();
-    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut deadline = Instant::now() + Duration::from_secs(5);
     loop {
         pump_notifications(&mut notify, result);
         if let Err(error) = service(connections, &capture, &mut input, terminal.as_ref()) {
@@ -787,9 +788,21 @@ fn supervise(
             result.output_truncated = true;
             break;
         }
+        // Waiting for the interactive reader is not a stalled log writer.
+        if !connections.output_ready() {
+            deadline = Instant::now() + Duration::from_secs(5);
+        }
         match capture.done.try_recv() {
             Ok(report) => {
-                while let Ok((stream, bytes)) = capture.output.try_recv() {
+                loop {
+                    if !connections.output_ready() {
+                        service(connections, &capture, &mut input, terminal.as_ref())?;
+                        thread::sleep(Duration::from_millis(2));
+                        continue;
+                    }
+                    let Ok((stream, bytes)) = capture.output.try_recv() else {
+                        break;
+                    };
                     connections.output(&stream, bytes)?;
                 }
                 result.log_errors.extend(report.errors);
@@ -887,7 +900,10 @@ fn service(
                 ErrorCode::InputOwned,
                 "attach with input ownership first",
             )?,
-            ClientMessage::Terminate => force = true,
+            ClientMessage::Terminate => {
+                connections.release_owner();
+                force = true;
+            }
             ClientMessage::Wait => {}
             ClientMessage::ReopenLogs => {
                 if let Err(error) = capture.reopen(id) {
@@ -920,6 +936,9 @@ fn service(
         })?;
     }
     for _ in 0..16 {
+        if !connections.output_ready() {
+            break;
+        }
         match capture.output.try_recv() {
             Ok((stream, bytes)) => connections.output(&stream, bytes)?,
             Err(_) => break,
