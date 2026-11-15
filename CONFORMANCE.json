@@ -581,6 +581,7 @@
         "test initial_connection_retains_first_output_without_waiting_for_a_handshake ... ok",
         "test terminal_size_resize_reattach_and_native_exit ... ok",
         "test held_reservation_is_released_before_exit_command ... ok",
+        "test held_reservation_outlives_result_publication ... ok",
         "test exit_command_observes_final_result_and_preserves_native_arguments ... ok",
         "test native_arguments_are_not_shell_interpreted ... ok",
         "test native_non_unicode_arguments_environment_and_cwd_survive_both_launch_modes ... ok",
@@ -1308,7 +1309,8 @@
       "success_markers": [
         "test exact_descriptors_compose_with_pipe_and_terminal_launch ... ok",
         "test invalid_claim_cannot_become_valid_during_duplication ... ok",
-        "test held_reservation_is_released_before_exit_command ... ok"
+        "test held_reservation_is_released_before_exit_command ... ok",
+        "test held_reservation_outlives_result_publication ... ok"
       ]
     },
     {

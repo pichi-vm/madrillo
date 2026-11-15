@@ -1,11 +1,11 @@
 #![forbid(unsafe_code)]
 #![cfg(feature = "qualification")]
+#[cfg(unix)]
+use std::process::Command;
 use std::{
-    fs,
+    fs, io,
     time::{Duration, Instant},
 };
-#[cfg(unix)]
-use std::{io, process::Command};
 
 #[test]
 fn held_reservation_is_released_before_exit_command() -> Result<(), Box<dyn std::error::Error>> {
@@ -75,6 +75,127 @@ fn held_reservation_is_released_before_exit_command() -> Result<(), Box<dyn std:
         std::thread::sleep(Duration::from_millis(5));
     }
     assert_eq!(fs::read(marker)?, b"released");
+    Ok(())
+}
+
+/// A reservation file, held with a lock (or without sharing on Windows).
+fn reservation(path: &std::path::Path) -> io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true).create_new(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        options.share_mode(0);
+    }
+    let file = options.open(path)?;
+    #[cfg(unix)]
+    file.lock()?;
+    Ok(file)
+}
+
+/// A diagnostic sink that is full: a pipe that nobody reads, kept full by a
+/// thread that stops when the reading end is dropped. A monitor given the
+/// writing end as its standard error is held up for the deadline of its
+/// diagnostics when it flushes them.
+fn full_pipe() -> io::Result<(io::PipeReader, io::PipeWriter)> {
+    use std::io::Write;
+    let (reader, writer) = io::pipe()?;
+    let mut filling = writer.try_clone()?;
+    std::thread::spawn(move || while filling.write_all(&[b'x'; 8192]).is_ok() {});
+    Ok((reader, writer))
+}
+
+/// A free reservation, or (on Unix, where it is a socket file) an endpoint
+/// that is gone, tells observers the workload is over, so its result must
+/// already be final when either happens. A diagnostic sink that is full holds
+/// the monitor up for its flush deadline between the end of the workload and
+/// the publication of the result: a wide, deterministic window in which to
+/// look.
+#[test]
+fn held_reservation_outlives_result_publication() -> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let state = root.path().join("state");
+    let path = root.path().join("reservation");
+    #[cfg(unix)]
+    let endpoint = root.path().join("control.sock");
+    let file = reservation(&path)?;
+    #[cfg(unix)]
+    let mut command = Command::new(env!("CARGO_BIN_EXE_madrillo"));
+    #[cfg(windows)]
+    let mut command = windows_spawn::Command::new(env!("CARGO_BIN_EXE_madrillo"));
+    command.arg("--state-dir").arg(&state).arg("--hold");
+    #[cfg(unix)]
+    {
+        use command_fds::{CommandFdExt, FdMapping};
+        command.arg("24").arg("--listen").arg(&endpoint);
+        command.fd_mappings(vec![FdMapping {
+            parent_fd: file.into(),
+            child_fd: 24,
+        }])?;
+    }
+    #[cfg(windows)]
+    command.arg_handle(&file)?;
+    command
+        .args(["--log-level", "trace", "--"])
+        .arg(env!("CARGO_BIN_EXE_madrillo-fixture"))
+        .arg("held-probe")
+        .arg(&path);
+    // Nobody reads the monitor's diagnostics, which fill their pipe.
+    let (reader, stderr) = full_pipe()?;
+    #[cfg(unix)]
+    command.stderr(std::process::Stdio::from(stderr));
+    #[cfg(windows)]
+    command.stderr(std::os::windows::io::OwnedHandle::from(stderr));
+    let mut child = command.spawn()?;
+    drop(command);
+    #[cfg(windows)]
+    drop(file);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    #[cfg(unix)]
+    let mut listened = false;
+    loop {
+        #[cfg(unix)]
+        let free = match fs::File::open(&path)?.try_lock_shared() {
+            Ok(()) => true,
+            Err(fs::TryLockError::WouldBlock) => false,
+            Err(fs::TryLockError::Error(error)) => return Err(error.into()),
+        };
+        #[cfg(windows)]
+        let free = {
+            use std::os::windows::fs::OpenOptionsExt;
+            match fs::OpenOptions::new().read(true).share_mode(7).open(&path) {
+                Ok(_) => true,
+                Err(error) if error.raw_os_error() == Some(32) => false,
+                Err(error) => return Err(error.into()),
+            }
+        };
+        #[cfg(unix)]
+        let closed = {
+            listened |= endpoint.exists();
+            listened && !endpoint.exists()
+        };
+        #[cfg(windows)]
+        let closed = false;
+        if free || closed {
+            assert!(
+                state.join("result.json").exists(),
+                "reservation released or endpoint closed before the result was published"
+            );
+        }
+        if free {
+            break;
+        }
+        if Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Err("held reservation deadline".into());
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // Nothing reads the diagnostics now, so that none can fill the pipe again
+    // and hold the monitor up as it ends.
+    drop(reader);
+    child.wait()?;
     Ok(())
 }
 

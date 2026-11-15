@@ -233,8 +233,10 @@ C22 is ready to execute with real held-file reservations, capture cancellation,
 and retained completion. The initial-channel fixture reads and compares
 `result.json` as soon as Completed arrives, and checks Unix endpoint removal.
 The Linux notification fixture also requires relay socket removal. Source review
-places held-resource release and listener closure before publication and final
-notification on every host; live connections remain only for bounded delivery.
+places held-resource release and listener closure after publication and before
+final notification on every host; live connections remain only for bounded delivery.
+The held-reservation fixture checks the reservation, and on Unix the endpoint,
+against publication: neither is released before the result is final.
 
 C30 is ready to execute with real Unix SIGINT/SIGTERM/SIGHUP/SIGQUIT delivery,
 workload handlers, retained logs and native signal exit status. Separate native

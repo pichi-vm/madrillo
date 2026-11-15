@@ -340,8 +340,6 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
             result.exited_at_unix_ms = unix_ms();
         }
     }
-    drop(held);
-    connections.close_listener();
     if matches!(result.oom, OomEvidence::Observed { .. })
         && let Err(error) = state.retain_oom()
     {
@@ -369,6 +367,11 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
     );
     result.monitor_errors.extend(diagnostics.flush());
     state.publish(&result)?;
+    // A released reservation or a closed endpoint tells observers the
+    // workload is over, so keep both until the result is final; release
+    // them before notifying clients so they can reuse them at once.
+    drop(held);
+    connections.close_listener();
     connections.broadcast(ServerMessage::Completed { result })?;
     let deadline = Instant::now() + Duration::from_secs(1);
     while connections.pending() && Instant::now() < deadline {
