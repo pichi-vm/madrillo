@@ -25,6 +25,7 @@ mod windows;
 use clap::Parser;
 use connections::Connections;
 use diagnostics::{Diagnostics, Level};
+use framing::FrameError;
 use input::Input;
 use logging::{
     Capture,
@@ -886,6 +887,55 @@ fn await_start(
     }
 }
 
+/// Serve one request.
+fn handle(
+    connections: &mut Connections,
+    input: &mut Input,
+    terminal: Option<&terminal::Terminal>,
+    id: u64,
+    message: ClientMessage,
+) -> Result<(), FrameError> {
+    match message {
+        ClientMessage::Attach { input, streams } => connections.attach(id, input, streams)?,
+        ClientMessage::Input { bytes } if connections.may_send_input(id) => {
+            // Bytes the workload has no room for wait with their sender.
+            match input.accept(&bytes) {
+                Ok(count) if count < bytes.len() => {
+                    connections.hold_input(id, &bytes[count..]);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    connections.error(id, ErrorCode::InputClosed, &error.to_string())?;
+                }
+            }
+        }
+        ClientMessage::InputEnd => connections.release_input(id),
+        ClientMessage::CloseInput if terminal.is_some() => connections.error(
+            id,
+            ErrorCode::Unsupported,
+            "a terminal has no input half-close; send terminal EOF bytes instead",
+        )?,
+        // Closing pipe input is administrative control, like Terminate.
+        // All peers are authenticated; data writes still require an input attachment.
+        ClientMessage::CloseInput => input.close_after_flush(),
+        ClientMessage::Input { .. } => {
+            connections.error(id, ErrorCode::InputOwned, "attach with input first")?
+        }
+        ClientMessage::Wait => {}
+        ClientMessage::Resize { rows, cols } => {
+            if let Some(terminal) = terminal {
+                if let Err(error) = terminal.resize(rows, cols) {
+                    connections.error(id, ErrorCode::Io, &error.to_string())?;
+                }
+            } else {
+                connections.error(id, ErrorCode::Unsupported, "workload has no terminal")?;
+            }
+        }
+        _ => connections.error(id, ErrorCode::Unsupported, "request is not implemented yet")?,
+    }
+    Ok(())
+}
+
 fn service(
     connections: &mut Connections,
     capture: &Capture,
@@ -898,51 +948,16 @@ fn service(
     connections.feed_held(input)?;
     for (id, message) in connections.poll()? {
         match message {
-            ClientMessage::Attach { input, streams } => connections.attach(id, input, streams)?,
-            ClientMessage::Input { bytes } if connections.may_send_input(id) => {
-                // Bytes the workload has no room for wait with their sender.
-                match input.accept(&bytes) {
-                    Ok(count) if count < bytes.len() => {
-                        connections.hold_input(id, &bytes[count..]);
-                    }
-                    Ok(_) => {}
-                    Err(error) => {
-                        connections.error(id, ErrorCode::InputClosed, &error.to_string())?;
-                    }
-                }
-            }
-            ClientMessage::InputEnd => connections.release_input(id),
-            ClientMessage::CloseInput if terminal.is_some() => connections.error(
-                id,
-                ErrorCode::Unsupported,
-                "a terminal has no input half-close; send terminal EOF bytes instead",
-            )?,
-            // Closing pipe input is administrative control, like Terminate.
-            // All peers are authenticated; data writes still require an input attachment.
-            ClientMessage::CloseInput => input.close_after_flush(),
-            ClientMessage::Input { .. } => {
-                connections.error(id, ErrorCode::InputOwned, "attach with input first")?
-            }
             ClientMessage::Terminate => {
                 connections.release();
                 force = true;
             }
-            ClientMessage::Wait => {}
             ClientMessage::ReopenLogs => {
                 if let Err(error) = capture.reopen(id) {
                     connections.error(id, ErrorCode::ResourceLimit, &error.to_string())?;
                 }
             }
-            ClientMessage::Resize { rows, cols } => {
-                if let Some(terminal) = terminal {
-                    if let Err(error) = terminal.resize(rows, cols) {
-                        connections.error(id, ErrorCode::Io, &error.to_string())?;
-                    }
-                } else {
-                    connections.error(id, ErrorCode::Unsupported, "workload has no terminal")?;
-                }
-            }
-            _ => connections.error(id, ErrorCode::Unsupported, "request is not implemented yet")?,
+            message => handle(connections, input, terminal, id, message)?,
         }
     }
     for _ in 0..32 {
