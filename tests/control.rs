@@ -1714,3 +1714,98 @@ fn state_privacy_is_inherited_before_creation() -> Result<(), Box<dyn std::error
     );
     Ok(())
 }
+
+#[test]
+fn resizing_a_gated_terminal_sets_the_size_the_workload_starts_at()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial_with_flags(
+        "terminal-probe",
+        true,
+        &["--terminal", "--size", "31x99", "--stdin"],
+    )?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    client.send(ClientMessage::Resize {
+        rows: 40,
+        cols: 120,
+    })?;
+    client.send(ClientMessage::Start)?;
+    #[cfg(unix)]
+    let size_line = b"size\n";
+    #[cfg(windows)]
+    let size_line = b"size\r";
+    let mut text = Vec::new();
+    while !String::from_utf8_lossy(&text).contains("SIZE=40x120") {
+        match client.next()? {
+            ServerMessage::Started { .. } => client.send(ClientMessage::Input {
+                bytes: size_line.to_vec(),
+            })?,
+            ServerMessage::Output { bytes, .. } => text.extend_from_slice(&bytes),
+            other => return Err(format!("unexpected {other:?}").into()),
+        }
+    }
+    drop(client);
+    monitor.child.kill()?;
+    Ok(())
+}
+
+#[test]
+fn close_input_before_start_reaches_the_workload() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut initial) = Monitor::initial_with_flags("echo", true, &["--stdin"])?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    // One channel orders the close before authorization without a timing barrier.
+    initial.send(ClientMessage::CloseInput)?;
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    assert!(
+        matches!(initial.next()?, ServerMessage::Completed { result }
+        if result.leader == madrillo::LeaderResult::Exit { code: 0 })
+    );
+    monitor.wait()
+}
+
+#[test]
+fn input_end_before_start_releases_only_that_attachment() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (mut monitor, mut initial) = Monitor::initial_with_flags("echo", true, &["--stdin"])?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    initial.send(ClientMessage::InputEnd)?;
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    initial.send(ClientMessage::Input {
+        bytes: b"released".to_vec(),
+    })?;
+    assert!(matches!(
+        initial.next()?,
+        ServerMessage::Error {
+            code: ErrorCode::InputOwned,
+            ..
+        }
+    ));
+    let mut writer = monitor.connect()?;
+    writer.attach(true)?;
+    writer.send(ClientMessage::Input {
+        bytes: b"open".to_vec(),
+    })?;
+    assert_eq!(writer.output_until(b"open")?, b"open");
+    writer.send(ClientMessage::CloseInput)?;
+    monitor.wait()
+}
+
+#[test]
+fn wait_before_start_receives_completion() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut initial) = Monitor::initial_command(
+        &[env!("CARGO_BIN_EXE_madrillo-fixture"), "exit", "0"],
+        true,
+        &[],
+        5,
+    )?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    initial.send(ClientMessage::Wait)?;
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    assert!(
+        matches!(initial.next()?, ServerMessage::Completed { result }
+        if result.leader == madrillo::LeaderResult::Exit { code: 0 })
+    );
+    monitor.wait()
+}

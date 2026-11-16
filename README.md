@@ -181,7 +181,9 @@ Unix and `\\.\pipe\madrillo-PID` on Windows. Attachments receive live output,
 and retained logs provide history. Detaching
 releases that client's input while the monitor keeps the workload's input open.
 The optional `--start-gated` waits for explicit caller authorization when external
-placement must finish before workload execution. See `madrillo --help` for the
+placement must finish before workload execution. Before Start it accepts
+attachments, `Resize`, `CloseInput`, `InputEnd` and `Wait`; other requests return `NotRunning`.
+See `madrillo --help` for the
 complete option list.
 
 For a native distribution, run `python3 tools/package.py /path/to/output` from a clean

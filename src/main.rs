@@ -646,6 +646,8 @@ fn supervise(
     if cli.start_gated
         && !await_start(
             connections,
+            &mut input,
+            terminal.as_ref(),
             #[cfg(unix)]
             &mut signals,
         )?
@@ -850,8 +852,12 @@ fn supervise(
     Ok(())
 }
 
+/// Wait for `Start` on the initial channel, serving meanwhile the requests
+/// that do not need the workload as the running monitor does.
 fn await_start(
     connections: &mut Connections,
+    input: &mut Input,
+    terminal: Option<&terminal::Terminal>,
     #[cfg(unix)] signals: &mut signal_hook::iterator::Signals,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     loop {
@@ -867,14 +873,18 @@ fn await_start(
             match message {
                 // The rest of this batch is still served.
                 ClientMessage::Start if id == 0 => started = true,
-                ClientMessage::Attach { input, streams } => {
-                    connections.attach(id, input, streams)?
-                }
-                _ => connections.error(
+                // Not until the workload runs.
+                ClientMessage::Start
+                | ClientMessage::Input { .. }
+                | ClientMessage::Terminate
+                | ClientMessage::ReopenLogs => connections.error(
                     id,
                     ErrorCode::NotRunning,
                     "workload awaits Start from its initial channel",
                 )?,
+                message => {
+                    handle(connections, input, terminal, id, message)?;
+                }
             }
         }
         if started {
@@ -1038,7 +1048,13 @@ mod start_tests {
             peer.write_all(&body)?;
         }
         let mut signals = signal_hook::iterator::Signals::new(Vec::<i32>::new())?;
-        assert!(await_start(&mut connections, &mut signals)?);
+        let mut input = Input::disabled();
+        assert!(await_start(
+            &mut connections,
+            &mut input,
+            None,
+            &mut signals
+        )?);
         connections.poll()?;
         let mut header = [0; 4];
         viewer.read_exact(&mut header)?;
