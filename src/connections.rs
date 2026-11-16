@@ -34,9 +34,15 @@ pub(crate) struct Connections {
     /// them, oldest first: they reach the workload in that order. While a
     /// client has any, its frames are not read: its sender waits, nothing is
     /// lost. They are delivered if the client goes meanwhile. A client holds at
-    /// most one frame.
+    /// most one frame. Once `MAX_HELD_BYTES` are held, no client that sends
+    /// input is read until the workload has taken some, so the total is
+    /// bounded however many clients there are, and however many come and go.
     holding: VecDeque<(u64, Vec<u8>)>,
 }
+
+/// The most input held for the workload in all, whoever sent it, plus at
+/// most one frame for each client.
+const MAX_HELD_BYTES: usize = 4 * 1024 * 1024;
 
 struct Client {
     id: u64,
@@ -289,6 +295,10 @@ impl Connections {
     pub(crate) fn hold_input(&mut self, id: u64, bytes: &[u8]) {
         self.holding.push_back((id, bytes.to_vec()));
     }
+    /// How many bytes of input are held.
+    fn held_bytes(&self) -> usize {
+        self.holding.iter().map(|(_, bytes)| bytes.len()).sum()
+    }
     /// Hand held input to the workload as it has room, the oldest first and
     /// none past one the workload could not take whole. A client that has gone
     /// still has what it held delivered; it is only not told of a failure.
@@ -340,6 +350,7 @@ impl Connections {
             }
         }
         let mut messages = Vec::new();
+        let full = self.held_bytes() >= MAX_HELD_BYTES;
         for client in &mut self.clients {
             if client.flush().is_err() {
                 client.dead = true;
@@ -347,6 +358,11 @@ impl Connections {
             }
             // A client whose input is held waits for the workload to read it.
             if self.holding.iter().any(|(id, _)| *id == client.id) {
+                continue;
+            }
+            // So do all that send input while too much is held; clients that
+            // only control the workload are served regardless.
+            if client.input && full {
                 continue;
             }
             match client.request() {
@@ -538,6 +554,57 @@ mod tests {
         assert_eq!(received.len(), big.len() + 10);
         assert!(received[..big.len()].iter().all(|byte| *byte == b'a'));
         assert!(received[big.len()..].iter().all(|byte| *byte == b'b'));
+        Ok(())
+    }
+
+    /// Send a request as a client does.
+    fn send_request(
+        peer: &mut Stream,
+        message: ClientMessage,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let body = serde_json::to_vec(&Request {
+            version: PROTOCOL_VERSION,
+            message,
+        })?;
+        peer.write_all(&u32::try_from(body.len())?.to_be_bytes())?;
+        peer.write_all(&body)?;
+        Ok(())
+    }
+
+    /// While as much input is held as is allowed, no client that sends input
+    /// is read, however many there are, but one that only controls the
+    /// workload is; once some is delivered, the others are read again.
+    #[test]
+    fn input_is_not_read_while_the_budget_for_held_input_is_used()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_root, mut connections, mut peers) = connected(2)?;
+        connections.attach(1, true, Vec::new())?;
+        // Held for a client that is no longer there, which is what fills it.
+        connections.hold_input(99, &vec![0; MAX_HELD_BYTES]);
+        send_request(
+            &mut peers[0],
+            ClientMessage::Input {
+                bytes: b"x".to_vec(),
+            },
+        )?;
+        send_request(&mut peers[1], ClientMessage::Wait)?;
+        // The input was sent first, so it would be read in the turn that reads
+        // the request after it.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut seen = Vec::new();
+        while !seen.iter().any(|(id, _)| *id == 2) {
+            assert!(Instant::now() < deadline, "the control client was not read");
+            seen.extend(connections.poll()?);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(seen.iter().all(|(id, _)| *id == 2));
+        connections.holding.clear();
+        let mut seen = Vec::new();
+        while !seen.iter().any(|(id, _)| *id == 1) {
+            assert!(Instant::now() < deadline, "the input client was not read");
+            seen.extend(connections.poll()?);
+            std::thread::sleep(Duration::from_millis(1));
+        }
         Ok(())
     }
 

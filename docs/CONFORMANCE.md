@@ -279,8 +279,11 @@ rejection and blocked-child-input force/timeout coverage. As in conmon, a slow
 attached client holds back workload output and is not cut off; force and
 timeout end that wait. Source review bounds
 capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes plus
-at most one held frame per client (a client that is cut off while holding
-input is dropped, what it held still delivered),
+at most one held frame per client and 4 MiB in all, plus at most one frame
+per client (past it no client that sends input is read until
+the workload takes some, while clients that only control it still are; a
+client that is cut off while holding input is dropped, what it held still
+delivered),
 clients to 32 and each client's pending delivery to 1 MiB. Blocking log work has
 one worker; capture workers and Windows final-delivery workers have fixed bounds.
 This is backpressure with explicit failures, not a promise to retain unlimited
