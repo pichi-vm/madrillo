@@ -861,9 +861,11 @@ fn await_start(
         {
             return Ok(false);
         }
+        let mut started = false;
         for (id, message) in connections.poll()? {
             match message {
-                ClientMessage::Start if id == 0 => return Ok(true),
+                // The rest of this batch is still served.
+                ClientMessage::Start if id == 0 => started = true,
                 ClientMessage::Attach { input, streams } => {
                     connections.attach(id, input, streams)?
                 }
@@ -873,6 +875,9 @@ fn await_start(
                     "workload awaits Start from its initial channel",
                 )?,
             }
+        }
+        if started {
+            return Ok(true);
         }
         if !connections.initial_alive() {
             return Ok(false);
@@ -978,4 +983,54 @@ fn pump_notifications(notify: &mut Option<notify::Notify>, result: &mut Completi
         }
     }
     true
+}
+
+#[cfg(all(test, unix))]
+mod start_tests {
+    use super::*;
+    use std::io::{Read, Write};
+
+    #[test]
+    fn attach_in_the_same_batch_as_start_gets_attached() -> Result<(), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let endpoint = root.path().join("control.sock");
+        let mut connections = Connections::bind(Some(&endpoint), Vec::new())?;
+        let (mut initial, monitor) = std::os::unix::net::UnixStream::pair()?;
+        monitor.set_nonblocking(true)?;
+        connections.initial(
+            interprocess::os::unix::uds_local_socket::Stream::from(monitor).into(),
+            false,
+        )?;
+        let mut viewer = std::os::unix::net::UnixStream::connect(&endpoint)?;
+        viewer.set_read_timeout(Some(Duration::from_secs(1)))?;
+        // Both complete frames are queued before await_start can poll. The
+        // initial client is first, so Attach must be served after Start.
+        for (peer, message) in [
+            (&mut initial, ClientMessage::Start),
+            (
+                &mut viewer,
+                ClientMessage::Attach {
+                    input: false,
+                    streams: Vec::new(),
+                },
+            ),
+        ] {
+            let body = serde_json::to_vec(&madrillo::Request {
+                version: madrillo::PROTOCOL_VERSION,
+                message,
+            })?;
+            peer.write_all(&u32::try_from(body.len())?.to_be_bytes())?;
+            peer.write_all(&body)?;
+        }
+        let mut signals = signal_hook::iterator::Signals::new(Vec::<i32>::new())?;
+        assert!(await_start(&mut connections, &mut signals)?);
+        connections.poll()?;
+        let mut header = [0; 4];
+        viewer.read_exact(&mut header)?;
+        let mut body = vec![0; usize::try_from(u32::from_be_bytes(header))?];
+        viewer.read_exact(&mut body)?;
+        let response: madrillo::Response = serde_json::from_slice(&body)?;
+        assert_eq!(response.message, ServerMessage::Attached { input: false });
+        Ok(())
+    }
 }
