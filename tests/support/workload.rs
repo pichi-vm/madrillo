@@ -375,6 +375,24 @@ fn run() -> Result<i32, Box<dyn std::error::Error>> {
                 io::stdout().write_all(&chunk)?;
             }
         }
+        Some("gated-echo") => {
+            // Reads nothing, and says nothing, until the file named exists,
+            // then echoes its input.
+            let gate = args.get(1).ok_or("gate file missing")?;
+            while !std::path::Path::new(gate).exists() {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            let mut buffer = [0; 8192];
+            loop {
+                let count = io::stdin().read(&mut buffer)?;
+                if count == 0 {
+                    break;
+                }
+                io::stdout().write_all(&buffer[..count])?;
+                io::stdout().flush()?;
+            }
+            Ok(0)
+        }
         Some("stdin-survival") => {
             // With no client, the monitor must keep the pipe writer open.
             let mut byte = [0; 1];

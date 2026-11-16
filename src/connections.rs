@@ -1,4 +1,5 @@
 use crate::framing::{FrameError, Frames, MAX_FRAME_BYTES};
+use crate::input::Input;
 use crate::transport::Transport;
 use interprocess::local_socket::Stream;
 #[cfg(unix)]
@@ -12,6 +13,7 @@ type Listener = interprocess::os::windows::named_pipe::PipeListener<
 >;
 use madrillo::{ClientMessage, ErrorCode, PROTOCOL_VERSION, Request, Response, ServerMessage};
 use std::{
+    collections::VecDeque,
     io::{self, Cursor, Read, Write},
     path::Path,
 };
@@ -28,6 +30,12 @@ pub(crate) struct Connections {
     next_id: u64,
     released: bool,
     extra_streams: Vec<String>,
+    /// Input bytes the workload has no room for yet, by the client that sent
+    /// them, oldest first: they reach the workload in that order. While a
+    /// client has any, its frames are not read: its sender waits, nothing is
+    /// lost. They are delivered if the client goes meanwhile. A client holds at
+    /// most one frame.
+    holding: VecDeque<(u64, Vec<u8>)>,
 }
 
 struct Client {
@@ -272,7 +280,37 @@ impl Connections {
             next_id: 1,
             released: false,
             extra_streams,
+            holding: VecDeque::new(),
         })
+    }
+
+    /// Keep the part of a client's input the workload has no room for, and
+    /// stop reading that client until it is delivered.
+    pub(crate) fn hold_input(&mut self, id: u64, bytes: &[u8]) {
+        self.holding.push_back((id, bytes.to_vec()));
+    }
+    /// Hand held input to the workload as it has room, the oldest first and
+    /// none past one the workload could not take whole. A client that has gone
+    /// still has what it held delivered; it is only not told of a failure.
+    pub(crate) fn feed_held(&mut self, input: &mut Input) -> Result<(), FrameError> {
+        while let Some((id, bytes)) = self.holding.front_mut() {
+            let id = *id;
+            match input.accept(bytes) {
+                Ok(count) => {
+                    bytes.drain(..count);
+                    if !bytes.is_empty() {
+                        return Ok(());
+                    }
+                }
+                Err(error) => {
+                    self.holding.pop_front();
+                    self.error(id, ErrorCode::InputClosed, &error.to_string())?;
+                    continue;
+                }
+            }
+            self.holding.pop_front();
+        }
+        Ok(())
     }
 
     pub(crate) fn poll(&mut self) -> io::Result<Vec<(u64, ClientMessage)>> {
@@ -305,6 +343,10 @@ impl Connections {
         for client in &mut self.clients {
             if client.flush().is_err() {
                 client.dead = true;
+                continue;
+            }
+            // A client whose input is held waits for the workload to read it.
+            if self.holding.iter().any(|(id, _)| *id == client.id) {
                 continue;
             }
             match client.request() {
@@ -405,6 +447,112 @@ impl Connections {
         self.clients
             .iter()
             .any(|c| !c.dead && c.written < c.outgoing.len())
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    /// Connections bound to an endpoint of its own, with `count` clients that
+    /// have connected to it and been accepted, one at a time (ids 1 to
+    /// `count`). The clients are returned to be kept connected, and the
+    /// directory to be kept.
+    fn connected(
+        count: usize,
+    ) -> Result<(tempfile::TempDir, Connections, Vec<Stream>), Box<dyn std::error::Error>> {
+        let root = tempfile::tempdir()?;
+        let endpoint = root.path().join("control.sock");
+        let mut connections = Connections::bind(Some(&endpoint), Vec::new())?;
+        let mut peers = Vec::new();
+        for _ in 0..count {
+            peers.push(Stream::connect(
+                endpoint.as_path().to_fs_name::<GenericFilePath>()?,
+            )?);
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while connections.clients.len() < count {
+            assert!(Instant::now() < deadline, "a client was not accepted");
+            connections.poll()?;
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        Ok((root, connections, peers))
+    }
+
+    /// A workload that reads what it is given, through `cat`, and the input
+    /// that feeds it.
+    fn reading_workload() -> Result<(Input, Output), Box<dyn std::error::Error>> {
+        let (input, stdin) = Input::pipe()?;
+        let mut cat = std::process::Command::new("cat")
+            .stdin(stdin)
+            .stdout(std::process::Stdio::piped())
+            .spawn()?;
+        let mut stdout = cat.stdout.take().ok_or("no stdout")?;
+        let reader = std::thread::spawn(move || {
+            let mut received = Vec::new();
+            stdout.read_to_end(&mut received).map(|_| received)
+        });
+        Ok((input, Output { cat, reader }))
+    }
+
+    /// What the workload received, and the workload.
+    struct Output {
+        cat: std::process::Child,
+        reader: std::thread::JoinHandle<io::Result<Vec<u8>>>,
+    }
+
+    /// Feed the workload until nothing is held, close its input and return
+    /// what it received.
+    fn finish(
+        connections: &mut Connections,
+        mut input: Input,
+        mut workload: Output,
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !input.is_closed() {
+            connections.feed_held(&mut input)?;
+            if connections.holding.is_empty() {
+                input.close_after_flush();
+            }
+            input.flush()?;
+            assert!(Instant::now() < deadline, "held input was not delivered");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        workload.cat.wait()?;
+        Ok(workload.reader.join().map_err(|_| "reader panicked")??)
+    }
+
+    /// Input held for several clients reaches the workload in the order it
+    /// was held, however many turns that takes and whatever the clients' order.
+    #[test]
+    fn held_input_of_several_clients_is_delivered_oldest_first()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_root, mut connections, _peers) = connected(2)?;
+        let (input, workload) = reading_workload()?;
+        // More than the workload's queue holds, from the later-listed client.
+        let big = vec![b'a'; 200 * 1024];
+        connections.hold_input(2, &big);
+        connections.hold_input(1, &[b'b'; 10]);
+        let received = finish(&mut connections, input, workload)?;
+        assert_eq!(received.len(), big.len() + 10);
+        assert!(received[..big.len()].iter().all(|byte| *byte == b'a'));
+        assert!(received[big.len()..].iter().all(|byte| *byte == b'b'));
+        Ok(())
+    }
+
+    /// Input held for a client that is then cut off is still delivered.
+    #[test]
+    fn input_held_for_a_client_that_goes_is_still_delivered()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let (_root, mut connections, _peers) = connected(1)?;
+        let (input, workload) = reading_workload()?;
+        connections.hold_input(1, b"held");
+        connections.clients[0].dead = true;
+        connections.poll()?;
+        assert!(connections.clients.is_empty());
+        assert_eq!(finish(&mut connections, input, workload)?, b"held");
+        Ok(())
     }
 }
 

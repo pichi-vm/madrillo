@@ -472,9 +472,26 @@ impl Client {
     fn send(&mut self, message: ClientMessage) -> Result<(), Box<dyn std::error::Error>> {
         self.raw(&Self::frame(message)?)
     }
+    /// Send, waiting up to `timeout` for the monitor to take it, as it may not
+    /// while it holds this client's earlier input for a workload that is slow
+    /// to read.
+    fn send_within(
+        &mut self,
+        message: ClientMessage,
+        timeout: Duration,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.raw_within(&Self::frame(message)?, timeout)
+    }
     fn raw(&mut self, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+        self.raw_within(bytes, Duration::from_secs(3))
+    }
+    fn raw_within(
+        &mut self,
+        bytes: &[u8],
+        timeout: Duration,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut written = 0;
-        let end = Instant::now() + Duration::from_secs(3);
+        let end = Instant::now() + timeout;
         while written < bytes.len() && Instant::now() < end {
             match self.stream.write(&bytes[written..]) {
                 Ok(count) => written += count,
@@ -741,6 +758,178 @@ fn slow_viewer_receives_complete_output() -> Result<(), Box<dyn std::error::Erro
     };
     assert_eq!(received, 1024 * 1024);
     assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 0 });
+    monitor.wait()
+}
+
+/// More input than the monitor's queue and the pipe hold, sent while the
+/// workload is not reading, waits with its sender and is not refused.
+#[test]
+fn input_waits_for_a_workload_that_reads_slowly() -> Result<(), Box<dyn std::error::Error>> {
+    const SIZE: usize = 300_000;
+    let gate = tempfile::tempdir()?;
+    let gate_file = gate.path().join("read");
+    let gate_path = gate_file.to_str().ok_or("non-Unicode test path")?;
+    let (mut monitor, mut client) = Monitor::initial_command(
+        &[
+            env!("CARGO_BIN_EXE_madrillo-fixture"),
+            "gated-echo",
+            gate_path,
+        ],
+        false,
+        &["--stdin"],
+        30,
+    )?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(client.next()?, ServerMessage::Started { .. }));
+    // Reading starts a while after the sender has more than fits: that is the
+    // wait to be shown, and the sender's writes wait for it.
+    let opener = {
+        let gate_file = gate_file.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1200));
+            std::fs::write(gate_file, b"")
+        })
+    };
+    let mut sent = 0;
+    while sent < SIZE {
+        let chunk = (SIZE - sent).min(48 * 1024);
+        // Later chunks wait until the workload reads, however slow the host.
+        client.send_within(
+            ClientMessage::Input {
+                bytes: vec![b'y'; chunk],
+            },
+            Duration::from_secs(60),
+        )?;
+        sent += chunk;
+    }
+    client.send(ClientMessage::CloseInput)?;
+    opener.join().map_err(|_| "the gate opener panicked")??;
+    let mut output = Vec::new();
+    loop {
+        match client.next()? {
+            ServerMessage::Output { bytes, .. } => output.extend(bytes),
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 0 });
+                break;
+            }
+            other => return Err(format!("input was refused: {other:?}").into()),
+        }
+    }
+    assert_eq!(output.len(), SIZE);
+    assert!(output.iter().all(|byte| *byte == b'y'));
+    monitor.wait()
+}
+
+/// Input the workload could not take yet reaches it before anything newer, from
+/// whichever client: what one client held goes ahead of what another then sent.
+#[test]
+fn held_input_goes_to_the_workload_before_newer_input() -> Result<(), Box<dyn std::error::Error>> {
+    const FIRST: usize = 200 * 1024;
+    let gate = tempfile::tempdir()?;
+    let gate_file = gate.path().join("read");
+    let gate_path = gate_file.to_str().ok_or("non-Unicode test path")?;
+    let (mut monitor, mut first) = Monitor::initial_command(
+        &[
+            env!("CARGO_BIN_EXE_madrillo-fixture"),
+            "gated-echo",
+            gate_path,
+        ],
+        false,
+        &["--stdin"],
+        30,
+    )?;
+    assert!(matches!(first.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(first.next()?, ServerMessage::Started { .. }));
+    // More than the monitor's queue and the pipe hold: the rest is held.
+    first.send_within(
+        ClientMessage::Input {
+            bytes: vec![b'a'; FIRST],
+        },
+        Duration::from_secs(60),
+    )?;
+    let mut second = monitor.connect()?;
+    second.attach(true)?;
+    second.send(ClientMessage::Input {
+        bytes: vec![b'b'; 10],
+    })?;
+    std::fs::write(&gate_file, b"")?;
+    let mut output = Vec::new();
+    // Closed only once all of it is echoed, so that none is held then.
+    let mut closer = None;
+    loop {
+        // The second client reads too: an attached client that does not
+        // read holds the workload's output back.
+        let message = first.next()?;
+        assert_eq!(second.next()?, message);
+        match message {
+            ServerMessage::Output { bytes, .. } => {
+                output.extend(bytes);
+                if output.len() >= FIRST + 10 && closer.is_none() {
+                    let mut client = monitor.connect()?;
+                    client.send(ClientMessage::CloseInput)?;
+                    closer = Some(client);
+                }
+            }
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 0 });
+                break;
+            }
+            other => return Err(format!("unexpected {other:?}").into()),
+        }
+    }
+    assert_eq!(output.len(), FIRST + 10);
+    assert!(output[..FIRST].iter().all(|byte| *byte == b'a'));
+    assert!(output[FIRST..].iter().all(|byte| *byte == b'b'));
+    monitor.wait()
+}
+
+/// Input held for a client that the workload can no longer take, because its
+/// input has closed, is answered InputClosed to that client alone.
+#[test]
+fn held_input_that_cannot_be_delivered_is_answered_to_its_sender_only()
+-> Result<(), Box<dyn std::error::Error>> {
+    // The workload never reads, and runs long enough not to end meanwhile.
+    let (mut monitor, mut holder) = Monitor::initial_command(
+        &[env!("CARGO_BIN_EXE_madrillo-fixture"), "sleep"],
+        false,
+        &["--stdin"],
+        20,
+    )?;
+    assert!(matches!(holder.next()?, ServerMessage::Prepared { .. }));
+    assert!(matches!(holder.next()?, ServerMessage::Started { .. }));
+    let mut bystander = monitor.connect()?;
+    bystander.attach(true)?;
+    // More than the monitor's queue and the pipe hold: the rest is held.
+    holder.send_within(
+        ClientMessage::Input {
+            bytes: vec![b'y'; 250_000],
+        },
+        Duration::from_secs(60),
+    )?;
+    // Terminate closes the input, so what is held cannot be delivered, whether
+    // or not it had been taken yet.
+    bystander.send(ClientMessage::Terminate)?;
+    // Everything each of them is sent, until the monitor is done with them.
+    let drain = |client: &mut Client| {
+        let mut messages = Vec::new();
+        while let Ok(message) = client.next() {
+            messages.push(message);
+        }
+        messages
+    };
+    let closed = |message: &ServerMessage| {
+        matches!(
+            message,
+            ServerMessage::Error {
+                code: ErrorCode::InputClosed,
+                ..
+            }
+        )
+    };
+    let held = drain(&mut holder);
+    let other = drain(&mut bystander);
+    assert!(held.iter().any(closed), "{held:?}");
+    assert!(!other.iter().any(closed), "{other:?}");
     monitor.wait()
 }
 
@@ -1074,23 +1263,25 @@ fn monitor_loss_allows_cooperative_cleanup_with_unread_input()
         assert!(matches!(client.next()?, ServerMessage::Started { .. }));
         client.output_until(b"alive\n")?;
         if blocked {
-            for _ in 0..8 {
-                client.send(ClientMessage::Input {
+            // The workload does not read: the monitor stops reading this
+            // sender's frames, so its writes eventually wait.
+            let mut waited = false;
+            for _ in 0..16 {
+                match client.send(ClientMessage::Input {
                     bytes: vec![b'x'; 48 * 1024],
-                })?;
-            }
-            loop {
-                match client.next()? {
-                    ServerMessage::Output { .. } => {}
-                    ServerMessage::Error {
-                        code: ErrorCode::ResourceLimit,
-                        ..
-                    } => break,
-                    response => {
-                        return Err(format!("unexpected input response {response:?}").into());
+                }) {
+                    Ok(()) => {}
+                    Err(error) if error.to_string().contains("write deadline") => {
+                        waited = true;
+                        break;
                     }
+                    Err(error) => return Err(error),
                 }
             }
+            assert!(
+                waited,
+                "a sender must wait for a workload that is not reading"
+            );
         }
         drop(client);
         std::thread::sleep(Duration::from_millis(30));
@@ -1298,25 +1489,33 @@ fn blocked_child_input_cannot_hold_force_or_timeout() -> Result<(), Box<dyn std:
         // Establish the administrative connection before creating pressure.
         let mut control = monitor.connect()?;
         control.attach(false)?;
-        for _ in 0..8 {
-            writer.send(ClientMessage::Input {
+        // The workload is not reading: the sender waits, nothing is refused.
+        let mut waited = false;
+        for _ in 0..16 {
+            match writer.send(ClientMessage::Input {
                 bytes: vec![b'x'; 48 * 1024],
-            })?;
-        }
-        assert!(matches!(
-            writer.next()?,
-            ServerMessage::Error {
-                code: madrillo::ErrorCode::ResourceLimit,
-                ..
+            }) {
+                Ok(()) => {}
+                Err(error) if error.to_string().contains("write deadline") => {
+                    waited = true;
+                    break;
+                }
+                Err(error) => return Err(error),
             }
-        ));
+        }
+        assert!(
+            waited,
+            "a sender must wait for a workload that is not reading"
+        );
         println!(
             "blocked input: force={force}, pressure established after {:?}",
             started.elapsed()
         );
         assert!(monitor.child.try_wait()?.is_none());
         assert!(!monitor._root.path().join("state/result.json").exists());
-        writer.send(ClientMessage::CloseInput)?;
+        // An EOF asked for meanwhile, by a client that is not blocked, holds
+        // neither force nor the deadline back.
+        control.send(ClientMessage::CloseInput)?;
         control.send(if force {
             ClientMessage::Terminate
         } else {

@@ -97,34 +97,26 @@ impl Input {
             input,
         ))
     }
-    pub(crate) fn enqueue(&mut self, bytes: &[u8]) -> io::Result<()> {
+    /// Queue as much of `bytes` as fits and return how much that was; zero
+    /// means the queue has no room yet. The caller keeps the rest.
+    pub(crate) fn accept(&mut self, bytes: &[u8]) -> io::Result<usize> {
         if self.writer.is_none() || self.closing {
             return Err(io::Error::new(
                 io::ErrorKind::BrokenPipe,
                 "child input is closed",
             ));
         }
-        if self
-            .pending
-            .len()
-            .saturating_sub(self.written)
-            .saturating_add(bytes.len())
-            > MAX_INPUT_BYTES
-        {
-            return Err(io::Error::new(
-                io::ErrorKind::WouldBlock,
-                "child input queue is full",
-            ));
-        }
+        let room = MAX_INPUT_BYTES.saturating_sub(self.pending.len() - self.written);
+        let count = bytes.len().min(room);
         if self.written > 0 {
             self.pending.drain(..self.written);
             self.written = 0;
         }
         self.pending
-            .try_reserve(bytes.len())
+            .try_reserve(count)
             .map_err(|_| io::Error::other("input allocation failed"))?;
-        self.pending.extend_from_slice(bytes);
-        Ok(())
+        self.pending.extend_from_slice(&bytes[..count]);
+        Ok(count)
     }
     pub(crate) fn flush(&mut self) -> io::Result<()> {
         if self.pending.len() == self.written {
@@ -158,6 +150,11 @@ impl Input {
         self.writer = None;
         self.pending.clear();
         self.written = 0;
+    }
+    /// Whether the input is closed.
+    #[cfg(all(test, unix))]
+    pub(crate) fn is_closed(&self) -> bool {
+        self.writer.is_none()
     }
     pub(crate) fn close_after_flush(&mut self) {
         self.closing = true;

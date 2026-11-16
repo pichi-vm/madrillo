@@ -278,7 +278,9 @@ execute with those cases, stalled-viewer force, explicit client-capacity
 rejection and blocked-child-input force/timeout coverage. As in conmon, a slow
 attached client holds back workload output and is not cut off; force and
 timeout end that wait. Source review bounds
-capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes,
+capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes plus
+at most one held frame per client (a client that is cut off while holding
+input is dropped, what it held still delivered),
 clients to 32 and each client's pending delivery to 1 MiB. Blocking log work has
 one worker; capture workers and Windows final-delivery workers have fixed bounds.
 This is backpressure with explicit failures, not a promise to retain unlimited
@@ -313,7 +315,8 @@ every host checks diagnostic levels, aliases and blocked stderr. Frame storage,
 client counts and per-turn servicing are explicitly bounded in the executable.
 
 The input-pressure fixture sends enough data to fill a non-reading workload's
-native pipe and bounded pending queue, requires ResourceLimit, then requests EOF.
+native pipe and bounded pending queue and requires the sender to be held, not
+refused, then requests EOF from a separate client.
 Both a separate client's force request and the detached runtime deadline must
 still finish with complete pipe-workload cleanup on every native host.
 

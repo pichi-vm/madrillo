@@ -888,17 +888,22 @@ fn service(
     terminal: Option<&terminal::Terminal>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     let mut force = false;
+    // What was held from before goes to the workload ahead of anything newer
+    // that this turn brings.
+    connections.feed_held(input)?;
     for (id, message) in connections.poll()? {
         match message {
             ClientMessage::Attach { input, streams } => connections.attach(id, input, streams)?,
             ClientMessage::Input { bytes } if connections.may_send_input(id) => {
-                if let Err(error) = input.enqueue(&bytes) {
-                    let code = if error.kind() == io::ErrorKind::WouldBlock {
-                        ErrorCode::ResourceLimit
-                    } else {
-                        ErrorCode::InputClosed
-                    };
-                    connections.error(id, code, &error.to_string())?;
+                // Bytes the workload has no room for wait with their sender.
+                match input.accept(&bytes) {
+                    Ok(count) if count < bytes.len() => {
+                        connections.hold_input(id, &bytes[count..]);
+                    }
+                    Ok(_) => {}
+                    Err(error) => {
+                        connections.error(id, ErrorCode::InputClosed, &error.to_string())?;
+                    }
                 }
             }
             ClientMessage::InputEnd => connections.release_input(id),
