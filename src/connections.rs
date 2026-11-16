@@ -323,7 +323,9 @@ impl Connections {
         Ok(())
     }
 
-    pub(crate) fn poll(&mut self) -> io::Result<Vec<(u64, ClientMessage)>> {
+    /// What clients have asked for. `gated` is whether the workload waits for
+    /// Start, which only the initial client can say.
+    pub(crate) fn poll(&mut self, gated: bool) -> io::Result<Vec<(u64, ClientMessage)>> {
         self.clients.retain(|client| !client.dead);
         if let Some(listener) = &self.listener {
             // Bound accepts per iteration so a flood cannot starve deadlines.
@@ -361,8 +363,11 @@ impl Connections {
                 continue;
             }
             // So do all that send input while too much is held; clients that
-            // only control the workload are served regardless.
-            if client.input && full {
+            // only control the workload are served regardless, and so is the
+            // initial client while the workload waits for Start, whose frames
+            // are the only ones that can say it, and whose input before it is
+            // refused, never held.
+            if client.input && full && !(gated && client.id == 0) {
                 continue;
             }
             match client.request() {
@@ -490,7 +495,7 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(10);
         while connections.clients.len() < count {
             assert!(Instant::now() < deadline, "a client was not accepted");
-            connections.poll()?;
+            connections.poll(false)?;
             std::thread::sleep(Duration::from_millis(1));
         }
         Ok((root, connections, peers))
@@ -594,7 +599,7 @@ mod tests {
         let mut seen = Vec::new();
         while !seen.iter().any(|(id, _)| *id == 2) {
             assert!(Instant::now() < deadline, "the control client was not read");
-            seen.extend(connections.poll()?);
+            seen.extend(connections.poll(false)?);
             std::thread::sleep(Duration::from_millis(1));
         }
         assert!(seen.iter().all(|(id, _)| *id == 2));
@@ -602,7 +607,7 @@ mod tests {
         let mut seen = Vec::new();
         while !seen.iter().any(|(id, _)| *id == 1) {
             assert!(Instant::now() < deadline, "the input client was not read");
-            seen.extend(connections.poll()?);
+            seen.extend(connections.poll(false)?);
             std::thread::sleep(Duration::from_millis(1));
         }
         Ok(())
@@ -616,7 +621,7 @@ mod tests {
         let (input, workload) = reading_workload()?;
         connections.hold_input(1, b"held");
         connections.clients[0].dead = true;
-        connections.poll()?;
+        connections.poll(false)?;
         assert!(connections.clients.is_empty());
         assert_eq!(finish(&mut connections, input, workload)?, b"held");
         Ok(())

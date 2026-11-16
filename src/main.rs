@@ -388,7 +388,7 @@ fn run(
     connections.broadcast(ServerMessage::Completed { result })?;
     let deadline = Instant::now() + Duration::from_secs(1);
     while connections.pending() && Instant::now() < deadline {
-        connections.poll()?;
+        connections.poll(false)?;
         thread::sleep(Duration::from_millis(2));
     }
     connections.finish()?;
@@ -604,15 +604,14 @@ fn supervise(
     }
     #[cfg(windows)]
     let mut child_stdin = None;
-    let mut input = if let Some(terminal) = &terminal {
+    let mut input = if let Some(terminal) = &mut terminal {
         #[cfg(unix)]
         {
             Input::terminal(terminal.writer()?)
         }
         #[cfg(windows)]
         {
-            let _ = terminal;
-            Input::disabled()
+            Input::terminal_windows(terminal.writer()?)?
         }
     } else if passthrough {
         command
@@ -694,10 +693,6 @@ fn supervise(
             })
             .map_err(io::Error::other)?;
         if let Some(terminal) = &mut terminal {
-            #[cfg(windows)]
-            {
-                input = Input::terminal_windows(terminal.writer()?)?;
-            }
             capture.read(terminal.reader()?, Stream::Stdout)?;
         }
         if let Some(stdout) = child.stdout() {
@@ -869,10 +864,15 @@ fn await_start(
             return Ok(false);
         }
         let mut started = false;
-        for (id, message) in connections.poll()? {
+        for (id, message) in connections.poll(true)? {
             match message {
                 // The rest of this batch is still served.
                 ClientMessage::Start if id == 0 => started = true,
+                // Held for the workload. Not the initial client's: its frames
+                // are the only ones that can say Start, so none may wait.
+                message @ ClientMessage::Input { .. } if id != 0 => {
+                    handle(connections, input, terminal, id, message)?;
+                }
                 // Not until the workload runs.
                 ClientMessage::Start
                 | ClientMessage::Input { .. }
@@ -956,7 +956,7 @@ fn service(
     // What was held from before goes to the workload ahead of anything newer
     // that this turn brings.
     connections.feed_held(input)?;
-    for (id, message) in connections.poll()? {
+    for (id, message) in connections.poll(false)? {
         match message {
             ClientMessage::Terminate => {
                 connections.release();
@@ -1055,7 +1055,7 @@ mod start_tests {
             None,
             &mut signals
         )?);
-        connections.poll()?;
+        connections.poll(false)?;
         let mut header = [0; 4];
         viewer.read_exact(&mut header)?;
         let mut body = vec![0; usize::try_from(u32::from_be_bytes(header))?];

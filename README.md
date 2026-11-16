@@ -182,7 +182,9 @@ and retained logs provide history. Detaching
 releases that client's input while the monitor keeps the workload's input open.
 The optional `--start-gated` waits for explicit caller authorization when external
 placement must finish before workload execution. Before Start it accepts
-attachments, `Resize`, `CloseInput`, `InputEnd` and `Wait`; other requests return `NotRunning`.
+attachments, `Resize`, `CloseInput`, `InputEnd`, `Wait`, and input from other
+clients (held until the workload can read). Input from the initial client,
+`Terminate` and `ReopenLogs` return `NotRunning` until launch.
 See `madrillo --help` for the
 complete option list.
 

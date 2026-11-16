@@ -281,9 +281,9 @@ timeout end that wait. Source review bounds
 capture/live queues to sixteen 8 KiB chunks, input to 64 KiB pending bytes plus
 at most one held frame per client and 4 MiB in all, plus at most one frame
 per client (past it no client that sends input is read until
-the workload takes some, while clients that only control it still are; a
-client that is cut off while holding input is dropped, what it held still
-delivered),
+the workload takes some, while clients that only control it still are, and so
+is the initial client while the workload waits for Start; a client that is cut
+off while holding input is dropped, what it held still delivered),
 clients to 32 and each client's pending delivery to 1 MiB. Blocking log work has
 one worker; capture workers and Windows final-delivery workers have fixed bounds.
 This is backpressure with explicit failures, not a promise to retain unlimited

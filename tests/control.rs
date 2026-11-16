@@ -1809,3 +1809,146 @@ fn wait_before_start_receives_completion() -> Result<(), Box<dyn std::error::Err
     );
     monitor.wait()
 }
+
+#[test]
+fn a_lot_of_input_from_another_client_before_start_is_held()
+-> Result<(), Box<dyn std::error::Error>> {
+    const SIZE: usize = 150_000;
+    let (mut monitor, mut initial) = Monitor::initial_with_flags("echo", true, &["--stdin"])?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    let mut writer = monitor.connect()?;
+    writer.attach(true)?;
+    writer.send_within(
+        ClientMessage::Input {
+            bytes: vec![b'y'; SIZE],
+        },
+        Duration::from_secs(60),
+    )?;
+    // Behind what is held, so not read until it is delivered.
+    writer.send(ClientMessage::CloseInput)?;
+    initial.send(ClientMessage::Start)?;
+    // An attached client that does not read holds the workload back, so the
+    // initial client goes once the workload runs.
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    drop(initial);
+    let mut echoed = 0;
+    loop {
+        match writer.next()? {
+            ServerMessage::Output { bytes, .. } => {
+                assert!(bytes.iter().all(|byte| *byte == b'y'));
+                echoed += bytes.len();
+            }
+            ServerMessage::Started { .. } => {}
+            ServerMessage::Completed { result } => {
+                assert_eq!(result.leader, madrillo::LeaderResult::Exit { code: 0 });
+                break;
+            }
+            other => return Err(format!("input was refused: {other:?}").into()),
+        }
+    }
+    assert_eq!(echoed, SIZE);
+    monitor.wait()
+}
+
+#[test]
+fn held_input_does_not_hide_start() -> Result<(), Box<dyn std::error::Error>> {
+    // Zero bytes encode in two characters each, so this fits in a frame; ten
+    // of them are more than is held in all.
+    const SIZE: usize = 450_000;
+    let (mut monitor, mut initial) = Monitor::initial_with_flags("sleep", true, &["--stdin"])?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    let mut writers = Vec::new();
+    for _ in 0..10 {
+        let mut writer = monitor.connect()?;
+        writer.attach(true)?;
+        writer.send_within(
+            ClientMessage::Input {
+                bytes: vec![0; SIZE],
+            },
+            Duration::from_secs(60),
+        )?;
+        writers.push(writer);
+    }
+    // A client that only controls the monitor is read in every turn, so two
+    // answers in a row mean a whole turn has passed since the last writer's
+    // bytes were sent, and what they brought has used up the room.
+    let mut probe = monitor.connect()?;
+    for _ in 0..2 {
+        probe.send(ClientMessage::Resize { rows: 1, cols: 1 })?;
+        assert!(matches!(
+            probe.next()?,
+            ServerMessage::Error {
+                code: ErrorCode::Unsupported,
+                ..
+            }
+        ));
+    }
+    initial.send(ClientMessage::Start)?;
+    assert!(matches!(initial.next()?, ServerMessage::Started { .. }));
+    probe.send(ClientMessage::Terminate)?;
+    monitor.wait()
+}
+
+#[test]
+fn a_lot_of_input_before_start_does_not_hide_start() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut initial) = Monitor::initial_with_flags("sleep", true, &["--stdin"])?;
+    assert!(matches!(initial.next()?, ServerMessage::Prepared { .. }));
+    for _ in 0..8 {
+        initial.send(ClientMessage::Input {
+            bytes: vec![b'x'; 60_000],
+        })?;
+    }
+    initial.send(ClientMessage::Start)?;
+    let mut refused = 0;
+    loop {
+        match initial.next()? {
+            ServerMessage::Started { .. } => break,
+            ServerMessage::Error {
+                code: ErrorCode::NotRunning,
+                ..
+            } => refused += 1,
+            other => return Err(format!("unexpected {other:?}").into()),
+        }
+    }
+    assert_eq!(
+        refused, 8,
+        "the initial client's input was taken before Start"
+    );
+    initial.send(ClientMessage::Terminate)?;
+    monitor.wait()
+}
+
+#[test]
+fn input_before_start_reaches_the_terminal() -> Result<(), Box<dyn std::error::Error>> {
+    let (mut monitor, mut client) = Monitor::initial_with_flags(
+        "terminal-probe",
+        true,
+        &["--terminal", "--size", "31x99", "--stdin"],
+    )?;
+    assert!(matches!(client.next()?, ServerMessage::Prepared { .. }));
+    // Sent before the workload runs, so that on Windows the input waits for
+    // the terminal's writer.
+    #[cfg(unix)]
+    let size_line = b"size\n";
+    #[cfg(windows)]
+    let size_line = b"size\r";
+    let mut writer = monitor.connect()?;
+    writer.attach(true)?;
+    writer.send(ClientMessage::Input {
+        bytes: size_line.to_vec(),
+    })?;
+    // Answered only once the input before it has been taken.
+    writer.attach(true)?;
+    client.send(ClientMessage::Start)?;
+    let mut text = Vec::new();
+    while !String::from_utf8_lossy(&text).contains("SIZE=31x99") {
+        match client.next()? {
+            ServerMessage::Started { .. } => {}
+            ServerMessage::Output { bytes, .. } => text.extend_from_slice(&bytes),
+            other => return Err(format!("unexpected {other:?}").into()),
+        }
+    }
+    drop((client, writer));
+    monitor.child.kill()?;
+    Ok(())
+}
