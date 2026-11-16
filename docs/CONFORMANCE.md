@@ -237,6 +237,9 @@ places held-resource release and listener closure after publication and before
 final notification on every host; live connections remain only for bounded delivery.
 The held-reservation fixture checks the reservation, and on Unix the endpoint,
 against publication: neither is released before the result is final.
+If publication fails, the reservation stays held and the endpoint open until the
+process is about to exit, after its final diagnostics flush; the socket is then
+removed.
 
 C30 is ready to execute with real Unix SIGINT/SIGTERM/SIGHUP/SIGQUIT delivery,
 workload handlers, retained logs and native signal exit status. Separate native

@@ -1181,6 +1181,13 @@ fn failed_result_publication_preserves_collision_and_skips_callback()
             .collect::<io::Result<Vec<_>>>()?;
         names.sort();
         assert_eq!(names, ["console.log", "result.json"]);
+        // The endpoint's socket is still removed when the endpoint is handed
+        // back to main.
+        #[cfg(unix)]
+        assert!(
+            !monitor.endpoint.exists(),
+            "the endpoint's socket was left behind"
+        );
     }
     Ok(())
 }

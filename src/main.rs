@@ -160,7 +160,8 @@ fn main() -> ExitCode {
     #[cfg(not(unix))]
     let syslog = false;
     let mut diagnostics = None;
-    let result = run(cli, &mut diagnostics);
+    let mut connections_on_failure = None;
+    let result = run(cli, &mut diagnostics, &mut connections_on_failure);
     if let Err(error) = &result {
         if diagnostics.is_none() {
             diagnostics = Diagnostics::start(level, syslog).ok();
@@ -213,7 +214,11 @@ fn log_file_path(value: &std::ffi::OsStr) -> io::Result<PathBuf> {
     Ok(PathBuf::from(path))
 }
 
-fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn std::error::Error>> {
+fn run(
+    cli: Cli,
+    diagnostics: &mut Option<Diagnostics>,
+    connections_on_failure: &mut Option<Connections>,
+) -> Result<(), Box<dyn std::error::Error>> {
     if cli.api_version {
         writeln!(io::stdout().lock(), "{PROTOCOL_VERSION}")?;
         return Ok(());
@@ -366,7 +371,14 @@ fn run(cli: Cli, diagnostics: &mut Option<Diagnostics>) -> Result<(), Box<dyn st
         ),
     );
     result.monitor_errors.extend(diagnostics.flush());
-    state.publish(&result)?;
+    if let Err(error) = state.publish(&result) {
+        // Its writer thread may still rename the result into place, so the
+        // reservation stays held and the endpoint open until the process is
+        // about to exit, after its final diagnostics flush.
+        std::mem::forget(held);
+        *connections_on_failure = Some(connections);
+        return Err(error.into());
+    }
     // A released reservation or a closed endpoint tells observers the
     // workload is over, so keep both until the result is final; release
     // them before notifying clients so they can reuse them at once.
