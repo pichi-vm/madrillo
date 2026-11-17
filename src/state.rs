@@ -97,6 +97,10 @@ impl State {
     }
 
     fn write(directory: &Path, result: &Completion) -> io::Result<()> {
+        // Observers may retire the directory as soon as result.json appears.
+        // Retain the directory to finish publication without reopening its name.
+        #[cfg(unix)]
+        let parent = fs::File::open(directory)?;
         let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
         serde_json::to_writer(&mut temporary, result)?;
         temporary.write_all(b"\n")?;
@@ -105,7 +109,7 @@ impl State {
             .persist_noclobber(directory.join("result.json"))
             .map_err(|error| error.error)?;
         #[cfg(unix)]
-        fs::File::open(directory)?.sync_all()?;
+        parent.sync_all()?;
         Ok(())
     }
 }
